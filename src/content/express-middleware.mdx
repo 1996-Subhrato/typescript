@@ -129,8 +129,8 @@ app.get("/orders/:id", async (req, res) => {
 
 Authentication middleware attaches a `user`. TypeScript does not know that, so reading
 `req.user` is an error until you extend the type. Express exposes a **global**
-`Express.Request` interface for exactly this; interfaces merge (*Declaration Files &
-Augmentation*).
+`Express.Request` interface for exactly this; interfaces merge ([*Declaration Files &
+Augmentation*](/docs/declaration-files)).
 
 ```ts
 import type { RequestHandler } from "express";

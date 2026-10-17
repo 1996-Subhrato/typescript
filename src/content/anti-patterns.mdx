@@ -27,7 +27,7 @@ const draft: Partial<User> = {};
 console.log(draft.name.toUpperCase()); // Error: 'draft.name' is possibly 'undefined'
 ```
 
-*Type Assertions* covers when a cast is fine: after you have proven the type.
+[*Type Assertions*](/docs/type-assertions) covers when a cast is fine: after you have proven the type.
 
 ## 2. Chains of `!`
 
@@ -61,7 +61,7 @@ function isPaid(order: Order): boolean {
 }
 ```
 
-If a value comes from a fixed set, list the set (*Unions, Literals & Intersections*).
+If a value comes from a fixed set, list the set ([*Unions, Literals & Intersections*](/docs/unions-and-literals)).
 
 ## 4. Mutating your inputs
 
@@ -140,7 +140,7 @@ function label(status: Status): string {
 }
 ```
 
-(*any, unknown, never, void* and *Discriminated Unions*.)
+([*any, unknown, never, void*](/docs/any-unknown-never-void) and [*Discriminated Unions*](/docs/discriminated-unions).)
 
 ## 7. Forgetting to `await`
 
@@ -176,7 +176,7 @@ const lost: 3 = retriesAnnotated; // Error: `number` is not assignable to `3`
 
 Annotating something the compiler already knows doesn't just add noise; it can widen the
 type. Annotate boundaries (parameters, exports, empty collections); let inference handle
-the rest (*Annotations & Inference*).
+the rest ([*Annotations & Inference*](/docs/annotations-and-inference)).
 
 ## 9. Generics that relate nothing
 
@@ -231,22 +231,22 @@ console.log(result.value); // Error: 'value' does not exist on the failure case
 ```
 
 The signature `(input: string) => number` of the first version promises success. If failure is
-expected, put it in the type (*Result & Error Types*).
+expected, put it in the type ([*Result & Error Types*](/docs/result-types)).
 
 ## The rest, at a glance
 
 | Anti-pattern | See |
 | ------------ | --- |
-| `any` for convenience | *Avoiding any* |
-| `@ts-ignore` instead of `@ts-expect-error` | *Strictness Flags* |
-| A bag of optional fields instead of a union | *Designing Reusable Types* |
-| Boolean flag parameters | *Designing Reusable Types* |
-| `response.json() as T` | *unknown at the Boundary* |
-| Using a database/wire type as the public model | *Database Models* |
-| `enum` where a literal union is enough | *Enums & as const* |
-| Branding everything, or nothing | *Branded Types* |
-| A type so clever nobody can read it | *Reading Complex Types* |
-| Turning strictness down to make errors vanish | *Strictness Flags* |
+| `any` for convenience | [*Avoiding any*](/docs/avoiding-any) |
+| `@ts-ignore` instead of `@ts-expect-error` | [*Strictness Flags*](/docs/strictness-flags) |
+| A bag of optional fields instead of a union | [*Designing Reusable Types*](/docs/designing-types) |
+| Boolean flag parameters | [*Designing Reusable Types*](/docs/designing-types) |
+| `response.json() as T` | [*unknown at the Boundary*](/docs/unknown-at-the-boundary) |
+| Using a database/wire type as the public model | [*Database Models*](/docs/database-models) |
+| `enum` where a literal union is enough | [*Enums & as const*](/docs/enums-and-as-const) |
+| Branding everything, or nothing | [*Branded Types*](/docs/branded-types) |
+| A type so clever nobody can read it | [*Reading Complex Types*](/docs/reading-complex-types) |
+| Turning strictness down to make errors vanish | [*Strictness Flags*](/docs/strictness-flags) |
 
 ## What a linter can and cannot catch
 

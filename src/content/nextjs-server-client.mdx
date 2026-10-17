@@ -57,7 +57,7 @@ class instances with methods, and so on.
 
 TypeScript does **not** enforce this. A function-typed prop compiles; the failure arrives
 later, from React, at build or request time. You can move the check into the type system
-with a `Serializable` type — the same recursive shape as `Json` from *Recursive Types*:
+with a `Serializable` type — the same recursive shape as `Json` from [*Recursive Types*](/docs/recursive-types):
 
 ```tsx
 type Serializable =
@@ -82,7 +82,7 @@ function LikeButton({ postId, initialLikes }: LikeButtonProps) {
 
 (This is deliberately conservative. React can also serialise `Date`, `Map`, `Set` and
 Promises; extend the union if you rely on them. Server Actions are the sanctioned way to
-pass a function — see *Server Actions & Forms*.)
+pass a function — see [*Server Actions & Forms*](/docs/nextjs-server-actions).)
 
 An `interface` does not satisfy the index-signature form; use a `type` alias for client
 props you want to check this way:
@@ -183,12 +183,12 @@ export async function listUsers(): Promise<unknown[]> {
 ## Context and hooks
 
 - **Context providers must be Client Components**, but they can wrap server content through
-  `children` (see *useRef & useContext*).
+  `children` (see [*useRef & useContext*](/docs/react-refs-context)).
 - **Hooks run only in Client Components.** Using `useState` in a Server Component fails at
   build time with a framework error. The type checker will not warn you — the boundary is
   enforced by the bundler, not by TypeScript.
 - **Browser APIs** such as `window` and `localStorage` also belong on the client, which is
-  the caution on `useLocalStorage` in *Custom Hooks*.
+  the caution on `useLocalStorage` in [*Custom Hooks*](/docs/react-custom-hooks).
 
 ## Common mistakes
 

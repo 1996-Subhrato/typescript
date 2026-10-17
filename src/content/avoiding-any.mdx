@@ -7,7 +7,7 @@ Used casually, it spreads, and a codebase full of it has TypeScript's syntax and
 safety. This page is about recognising how `any` gets in, replacing it with something
 honest, and the small number of cases where it is acceptable.
 
-*any, unknown, never, void* introduced the types; here the focus is practice.
+[*any, unknown, never, void*](/docs/any-unknown-never-void) introduced the types; here the focus is practice.
 
 ## `any` spreads
 
@@ -96,7 +96,7 @@ callTyped((a: string) => a); // Error: a string function is not a (number, numbe
 ```
 
 When you genuinely need "any function", say it without `any`: `(...args: never[]) => unknown`
-accepts every function (*Utility Types: Unions & Functions* uses it).
+accepts every function ([*Utility Types: Unions & Functions*](/docs/utility-types-unions) uses it).
 
 ### "Any array" -> a generic
 
@@ -119,7 +119,7 @@ const loose = JSON.parse('{"id": 1}'); // any
 const careful: unknown = JSON.parse('{"id": 1}'); // unknown, must be checked before use
 ```
 
-Then validate it (*unknown at the Boundary*).
+Then validate it ([*unknown at the Boundary*](/docs/unknown-at-the-boundary)).
 
 ### "This library has no types" -> a small declaration
 
@@ -131,7 +131,7 @@ const total: number = price("kb-01", 2);
 price(42, 2); // Error: 'number' is not assignable to 'string'
 ```
 
-Declare only the functions you use (*Declaration Files & Augmentation*). A ten-line stub is
+Declare only the functions you use ([*Declaration Files & Augmentation*](/docs/declaration-files)). A ten-line stub is
 far better than an `any` module.
 
 ### "I'll type it properly later" -> say so out loud
@@ -156,8 +156,8 @@ Rarely, and with a comment explaining why:
   (the standard library's own `ReturnType<T extends (...args: any) => any>`). Prefer `never`
   parameters where they work.
 - **Test code** that builds deliberately malformed input to check validation.
-- **A short-lived migration shim**, listed and counted (*Migrating JavaScript to
-  TypeScript*).
+- **A short-lived migration shim**, listed and counted ([*Migrating JavaScript to
+  TypeScript*](/docs/migrating-js-to-ts)).
 - **Genuinely dynamic interop** where the shape is truly open.
 
 What these have in common is that the `any` is *contained*: it does not become the type of
@@ -188,7 +188,7 @@ noisier, and often worth it.
 
 - **`as any` to get past an error.** The error is information; find out what it says.
 - **`any` in a parameter or return type.** Those are the contract; make them real.
-- **`Promise<any>`** for a fetch helper (*A Generic API Client* shows the alternative).
+- **`Promise<any>`** for a fetch helper ([*A Generic API Client*](/docs/generic-api-client) shows the alternative).
 - **Replacing `any` with `{}` or `Object`**, which are different problems.
 - **Disabling the lint rule file-wide** instead of justifying a single line.
 - **Believing "no `any` in my code" means "no `any` in my program".** Check the sources.

@@ -40,7 +40,7 @@ Three TypeScript ideas in nine lines:
 2. **`async` component** — Server Components may be `async`, and React's types allow a
    component to return `Promise<ReactNode>`.
 3. **`notFound(): never`** — control-flow analysis knows nothing follows it, so `topic` is
-   narrowed without an assertion (*any, unknown, never, void*).
+   narrowed without an assertion ([*any, unknown, never, void*](/docs/any-unknown-never-void)).
 
 Forgetting the `await` is a compile error, not a runtime surprise:
 

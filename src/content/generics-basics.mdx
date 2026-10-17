@@ -95,7 +95,7 @@ const users = await getJson<User[]>("/api/users"); // User[]
 
 Be clear about what this does *not* do. `T` is a claim you make at the call site;
 `response.json()` is not validated against it. This is the assertion problem from
-*Type Assertions* in generic clothing. *A Generic API Client* returns to it.
+[*Type Assertions*](/docs/type-assertions) in generic clothing. [*A Generic API Client*](/docs/generic-api-client) returns to it.
 
 ## When you need to write it explicitly
 

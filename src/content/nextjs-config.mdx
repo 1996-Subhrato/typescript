@@ -80,7 +80,7 @@ export default function config(phase: string): NextConfig {
 ## Metadata and viewport
 
 `Metadata` describes the `<head>`. Export it as a constant for static pages, or from
-`generateMetadata` for dynamic ones (*Pages, Layouts & Route Params*).
+`generateMetadata` for dynamic ones ([*Pages, Layouts & Route Params*](/docs/nextjs-pages-layouts)).
 
 ```ts title="app/layout.tsx"
 import type { Metadata, Viewport } from "next";
@@ -151,8 +151,8 @@ const name = "NEXT_PUBLIC_API_URL";
 const dynamic = process.env[name]; // NOT inlined: undefined in the browser
 ```
 
-That rule shapes how you build a typed config. The server-side object from *Environment &
-Config* can parse the whole of `process.env`. The browser-visible object must list each
+That rule shapes how you build a typed config. The server-side object from [*Environment &
+Config*](/docs/env-and-config) can parse the whole of `process.env`. The browser-visible object must list each
 variable by its literal name:
 
 ```ts

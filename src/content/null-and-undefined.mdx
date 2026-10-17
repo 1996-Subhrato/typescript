@@ -131,7 +131,7 @@ Picking the wrong one produces real bugs. If the server sends `null`, typing the
   genuinely should always exist. Only use it when absence is a real possibility.
 - **Forgetting that `find`, `Map.get` and indexing return `| undefined`.**
 - **Silencing with `!`** (non-null assertion). Covered, with its risks, in
-  *Type Assertions*.
+  [*Type Assertions*](/docs/type-assertions).
 
 ## Practice
 
@@ -148,5 +148,5 @@ type Order = {
 Write `getCity(order: Order): string` that returns the customer's city, or
 `"Unknown"` when any part is missing. Do it in one expression.
 
-Then revisit the earlier question from *Primitive Types*: what return type makes
+Then revisit the earlier question from [*Primitive Types*](/docs/primitive-types): what return type makes
 `parseQuantity("abc")` honest?

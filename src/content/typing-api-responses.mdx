@@ -91,7 +91,7 @@ schema, and re-check it against real responses.
 ## Unions in payloads
 
 When a field's shape depends on a tag, model it as a discriminated union
-(*Discriminated Unions*), exactly as the API describes it:
+([*Discriminated Unions*](/docs/discriminated-unions)), exactly as the API describes it:
 
 ```ts
 type PaymentDto =
@@ -146,7 +146,7 @@ function toOrder(dto: OrderDto): Order {
 ```
 
 A `Date` is not JSON. On the wire it is a string, so a response type containing `Date`
-is wrong (*Database Models* showed the `Serialized<T>` helper for the reverse mapping).
+is wrong ([*Database Models*](/docs/database-models) showed the `Serialized<T>` helper for the reverse mapping).
 The conversion belongs in the mapper.
 
 ## Values that may grow
@@ -179,7 +179,7 @@ label for every case, including `unknown`.
 ## Other details that bite
 
 - **IDs are strings**, even when they look numeric. Large integers can lose precision in
-  JavaScript, and an `"ord_1042"` prefix is common. Brand them (*Branded Types*) if mixing
+  JavaScript, and an `"ord_1042"` prefix is common. Brand them ([*Branded Types*](/docs/branded-types)) if mixing
   them up is plausible.
 - **Money is integers** (cents) in the payload. Name the unit in the field (`total_cents`)
   and in the domain type.
@@ -192,7 +192,7 @@ label for every case, including `unknown`.
 
 All of this describes what the response *should* be. A type annotation does not check the
 network. A server bug, a proxy, or an outdated type can all deliver something else. That
-gap is the subject of *unknown at the Boundary*; this topic gives you the types to check
+gap is the subject of [*unknown at the Boundary*](/docs/unknown-at-the-boundary); this topic gives you the types to check
 against.
 
 ## Common mistakes

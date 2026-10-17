@@ -30,8 +30,8 @@ code alike.
 
 ## Deriving types for one route
 
-Use `keyof`, indexed access and conditional types (*Constraints, keyof & Indexed Access*,
-*Conditional Types & infer*) to read pieces back out.
+Use `keyof`, indexed access and conditional types ([*Constraints, keyof & Indexed Access*](/docs/generic-constraints),
+[*Conditional Types & infer*](/docs/conditional-types)) to read pieces back out.
 
 ```ts
 type User = { id: string; name: string };
@@ -54,7 +54,7 @@ type NoBody = BodyOf<"GET /users/:id">; // never
 ## Path parameters, derived from the path itself
 
 Do not write `{ params: { id: string } }` next to a path that already contains `:id`.
-A template literal type (*Template Literal Types*) can extract it:
+A template literal type ([*Template Literal Types*](/docs/template-literal-types)) can extract it:
 
 ```ts
 type ExtractParams<Path extends string> =
@@ -203,7 +203,7 @@ its calls from the same object. Nothing is written twice.
 
 - **Same repository:** put the contract in a shared module and `import type` it from both
   sides. In this project's Next.js terms, a route handler and the browser code can import the
-  same `types` file (*Route Handlers*).
+  same `types` file ([*Route Handlers*](/docs/nextjs-route-handlers)).
 - **Monorepo:** publish it as an internal package.
 - **Separate repositories or languages:** generate types from an OpenAPI document instead of
   writing them by hand. Tools exist for exactly this, and for frameworks (tRPC is the best

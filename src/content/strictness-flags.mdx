@@ -90,7 +90,7 @@ an existing codebase.
 ### `strictFunctionTypes`
 
 Function parameters are checked **contravariantly**: a handler for any `Animal` can stand in
-for a handler for `Dog`, not the reverse (*Structural Typing & Compatibility*).
+for a handler for `Dog`, not the reverse ([*Structural Typing & Compatibility*](/docs/structural-typing)).
 
 ```ts
 // @strictFunctionTypes: false
@@ -397,7 +397,7 @@ const berlin = stock.berlin; // Error: property comes from an index signature, u
 
 Rejects TypeScript syntax that cannot simply be deleted to get JavaScript: `enum`s,
 namespaces, and constructor parameter properties. Relevant if code runs directly under
-Node's built-in type stripping (*Enums & as const*).
+Node's built-in type stripping ([*Enums & as const*](/docs/enums-and-as-const)).
 
 ```ts
 // @erasableSyntaxOnly: true

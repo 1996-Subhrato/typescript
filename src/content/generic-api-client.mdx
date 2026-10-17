@@ -6,7 +6,7 @@ Every application ends up with a small wrapper around `fetch`: base URL, auth he
 handling, error mapping. Written generically, it is the one place where API types enter
 your program, which makes it the most important function to get right.
 
-This topic returns to the `getJson<T>` helper from *Generics: The Basics* and fixes what it
+This topic returns to the `getJson<T>` helper from [*Generics: The Basics*](/docs/generics-basics) and fixes what it
 left open.
 
 ## The problem with `getJson<T>`
@@ -76,12 +76,12 @@ Three things changed:
 2. **`body` is `unknown`.** `response.json()` returns `Promise<any>`; assigning it to an
    `unknown` variable stops the `any` from spreading.
 3. **Every failure is a value** (`Result`): network down, HTTP error, malformed body. The
-   caller must handle each. The error model is expanded in *Error Modelling*.
+   caller must handle each. The error model is expanded in [*Error Modelling*](/docs/api-error-modelling).
 
 ## Let a schema do the parsing
 
 A schema library gives you the parser and the type in one declaration
-(*DTOs & Runtime Validation*). The client can accept the schema itself:
+([*DTOs & Runtime Validation*](/docs/dtos-and-validation)). The client can accept the schema itself:
 
 ```ts
 import { z } from "zod";
@@ -191,7 +191,7 @@ const url = withQuery("/products", { search: "keyboard", page: 2, inStock: true,
 
 The client above accepts `body: unknown`, so it cannot catch a wrong request. Typing
 requests per endpoint needs a description of each endpoint, which is exactly what
-*Modelling an API Contract* builds. Until then, give each call site a typed body:
+[*Modelling an API Contract*](/docs/api-contract-modelling) builds. Until then, give each call site a typed body:
 
 ```ts
 type CreateUserRequest = { name: string; email: string };
@@ -204,7 +204,7 @@ postUser({ name: "Ada" }); // Error: Property 'email' is missing
 
 ## From `Result` to UI state
 
-The `AsyncState` from *Async Data in Components* maps directly onto the client's result:
+The `AsyncState` from [*Async Data in Components*](/docs/react-async-data) maps directly onto the client's result:
 
 ```ts
 type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };

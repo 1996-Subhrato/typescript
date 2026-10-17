@@ -92,6 +92,8 @@ Then open <http://localhost:3000>.
 | `npm run lint` | Run ESLint |
 | `npm run typecheck` | Generate Next's route types, then run `tsc --noEmit` |
 | `npm run check:content` | Compile every code sample in the docs |
+| `npm run check:links` | Verify cross-references between topics (add `-- --fix` to turn them into links) |
+| `npm run check:pages` | Smoke-test every rendered page (needs a running server) |
 
 > **Why `typecheck` and not plain `tsc`?** `PageProps` and `LayoutProps` are global
 > types that Next.js *generates* from the folder structure. On a fresh clone a bare
@@ -105,6 +107,7 @@ Before a change is considered done, all of these pass:
 npm run typecheck
 npm run lint
 npm run check:content
+npm run check:links
 npm run build
 ```
 
@@ -125,7 +128,16 @@ removes a base option; an unknown option or bad value fails the check.
 
 To check selected topics only: `npm run check:content -- narrowing`. A snippet that genuinely
 cannot compile standalone can be preceded by a `{/* check:skip */}` line; skips are counted and
-printed. With a dev server running, `npm run check:pages` smoke-tests every rendered page.
+printed. With a dev server running, `npm run check:pages` smoke-tests every rendered page and
+confirms that every internal link inside an article points at a topic that exists.
+
+### Cross-reference check
+
+Topics refer to each other by title in italics. `npm run check:links` makes sure those references
+stay honest: an italic phrase that almost matches a topic title (a typo, or a renamed topic) is an
+error, and so is an exact title that is not a link. `npm run check:links -- --fix` rewrites every
+unlinked reference as a link. Level names and short forms such as *Utility Types* are allowed as
+plain text. It also lists wording such as "the next topic" for a human to re-check after topics move.
 
 ## Project structure
 

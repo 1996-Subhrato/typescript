@@ -46,7 +46,7 @@ function describe(subscription: Subscription): string {
 ```
 
 The rule of thumb: if you find yourself writing `if (x.a && !x.b)` to check a state that
-"shouldn't happen", the type should have ruled it out (*Discriminated Unions*).
+"shouldn't happen", the type should have ruled it out ([*Discriminated Unions*](/docs/discriminated-unions)).
 
 ## 2. One source of truth: derive, do not duplicate
 
@@ -178,7 +178,7 @@ type InvoiceId = string & { readonly [brand]: "InvoiceId" };
 ```
 
 Avoid `Data`, `Info`, `Item`, `Object`, `Manager`. Name by role in the domain. Brand
-identifiers only where mixing them up is plausible *and* costly (*Branded Types*).
+identifiers only where mixing them up is plausible *and* costly ([*Branded Types*](/docs/branded-types)).
 
 ## 8. Keep the public surface small
 
@@ -207,7 +207,7 @@ Types are code that someone must read. Warning signs that a type has become too 
 - A runtime check or a plain function would be shorter and clearer.
 
 If a type is hard to read, consider whether a simpler, slightly less precise one would serve.
-*Reading Complex Types* is the other side of this: you will meet such types in libraries.
+[*Reading Complex Types*](/docs/reading-complex-types) is the other side of this: you will meet such types in libraries.
 
 ## Common mistakes
 

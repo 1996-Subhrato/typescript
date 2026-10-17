@@ -121,7 +121,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Product |
 }
 ```
 
-The pattern is the one from *DTOs & Runtime Validation*: `unknown` in, schema in the
+The pattern is the one from [*DTOs & Runtime Validation*](/docs/dtos-and-validation): `unknown` in, schema in the
 middle, a checked type out. The `try/catch` is separate because malformed JSON throws before
 validation begins.
 

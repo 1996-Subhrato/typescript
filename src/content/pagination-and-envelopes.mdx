@@ -28,8 +28,8 @@ async function demo(): Promise<void> {
 ```
 
 One definition, any payload. Envelopes that carry the success/failure flag are the
-discriminated unions from *Result & Error Types*; the failure side is the subject of
-*Error Modelling*.
+discriminated unions from [*Result & Error Types*](/docs/result-types); the failure side is the subject of
+[*Error Modelling*](/docs/api-error-modelling).
 
 ## Offset pagination
 
@@ -88,7 +88,7 @@ async function loadMore(current: CursorPage<Event>): Promise<CursorPage<Event> |
 ### Make cursors opaque
 
 A cursor is the server's business. If it is typed as `string`, callers can invent or edit
-one. A brand (*Branded Types*) means the only way to obtain a cursor is from a response:
+one. A brand ([*Branded Types*](/docs/branded-types)) means the only way to obtain a cursor is from a response:
 
 ```ts
 declare const brand: unique symbol;
@@ -127,7 +127,7 @@ const first: ItemOf<typeof userPage> | undefined = userPage.items[0]; // User | 
 ```
 
 `ItemOf` pulls the element type out of any page with a conditional type and `infer`
-(*Conditional Types & infer*).
+([*Conditional Types & infer*](/docs/conditional-types)).
 
 ## Iterating every item: an async generator
 

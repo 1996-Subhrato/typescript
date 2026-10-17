@@ -95,7 +95,7 @@ function parseProduct(input: unknown): Product | undefined {
 
 ### 3. Type guards and assertion functions
 
-Wrap the check so callers get narrowing (*Type Guards & Predicates*):
+Wrap the check so callers get narrowing ([*Type Guards & Predicates*](/docs/type-guards)):
 
 ```ts
 type Product = { id: string; priceCents: number };
@@ -119,7 +119,7 @@ function handle(body: unknown): string {
 ### 4. A schema
 
 For anything with more than a few fields, nesting, defaults or conversions, let a schema
-describe the shape once (*DTOs & Runtime Validation*):
+describe the shape once ([*DTOs & Runtime Validation*](/docs/dtos-and-validation)):
 
 ```ts
 import { z } from "zod";
@@ -140,7 +140,7 @@ function parseProduct(input: unknown): Product {
 
 Notice two types come out of one schema: `z.input` is what is on the wire (a string) and
 `z.output` is what you get after conversion (a `Date`). The date conversion happens at the
-boundary, where *Typing API Responses* said it belongs.
+boundary, where [*Typing API Responses*](/docs/typing-api-responses) said it belongs.
 
 ## Choosing
 
@@ -198,7 +198,7 @@ your client break whenever the server changes something irrelevant.
 
 ## But I own the server
 
-Fair question; sharing types between client and server (*Modelling an API Contract*)
+Fair question; sharing types between client and server ([*Modelling an API Contract*](/docs/api-contract-modelling))
 removes drift in the *source*. It does not remove:
 
 - **Deploy skew:** an old client talking to a new server, or the reverse.
@@ -211,7 +211,7 @@ found early).
 
 ## Where `as` is acceptable
 
-After the check. `parseStatus` in *Typing API Responses* casts to `KnownStatus` immediately
+After the check. `parseStatus` in [*Typing API Responses*](/docs/typing-api-responses) casts to `KnownStatus` immediately
 after `includes` proved it. What is never acceptable is `await response.json() as T` with
 nothing in between.
 

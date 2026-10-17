@@ -123,7 +123,7 @@ guards, and prefer checking exactly the properties the target type requires.
 - **Guards that check too little.** `typeof x === "object"` alone does not prove
   something is a `User` — and `null` is also `typeof "object"`.
 - **Writing a guard for every type.** Hand-written guards for large shapes are error
-  prone; schema libraries generate them. See *DTOs & Runtime Validation*.
+  prone; schema libraries generate them. See [*DTOs & Runtime Validation*](/docs/dtos-and-validation).
 - **Inverted predicates** (`value is X` that returns true when it is *not* X).
 
 ## Practice

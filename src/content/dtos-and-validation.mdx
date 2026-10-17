@@ -35,7 +35,7 @@ The rule: **everything from outside the process is `unknown` until validated.**
 
 ## Validate by hand
 
-A type guard (*Type Guards & Predicates*) turns `unknown` into a checked type:
+A type guard ([*Type Guards & Predicates*](/docs/type-guards)) turns `unknown` into a checked type:
 
 ```ts
 type CreateUserDto = { name: string; email: string; age: number };
@@ -195,7 +195,7 @@ of "but the types said it was a string" bugs.
 | HTTP request | body, query, params, headers | `unknown` |
 | HTTP response from another service | `fetch(...).then(r => r.json())` | `unknown` |
 | Storage | `localStorage`, files, cache, queue messages | `unknown` |
-| Environment | `process.env` | strings; see *Environment & Config* |
+| Environment | `process.env` | strings; see [*Environment & Config*](/docs/env-and-config) |
 | Your own code | function arguments you control | the declared type |
 
 Inside the program, trust the types. At the edge, check.

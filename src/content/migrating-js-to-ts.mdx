@@ -164,7 +164,7 @@ Building an object by adding properties later is common in JavaScript. Declare i
 front. Other recurring ones: arrays holding mixed types (use a union), functions that return
 different types on different paths (a union, or split the function), `module.exports` (use
 `export`), `PropTypes` (the TypeScript type replaces them), and reading `process.env`
-values as if they were always present (*Environment & Config*).
+values as if they were always present ([*Environment & Config*](/docs/env-and-config)).
 
 ## Step 5: untyped dependencies
 
@@ -188,7 +188,7 @@ In order of preference:
    ```
 
    Tested: this makes the error go away and gives you checked calls. (It lives in a `.d.ts`
-   file; see *Declaration Files & Augmentation*.)
+   file; see [*Declaration Files & Augmentation*](/docs/declaration-files).)
 3. As a stopgap, `declare module "untyped-lib";` makes everything from it `any`. Track it.
 
 With `noImplicitAny` off the error does not appear at all, which is one reason to turn that
@@ -211,7 +211,7 @@ Run both configs in CI. Add folders to `include` as they are cleaned up. One cat
 **files imported by a strict file are checked strictly too**, even if they are not in
 `include`. A strict module that imports a messy one reports the messy one's errors. Convert
 leaf modules first and work inward, and the list of strict folders can grow without
-surprises. The order in which to enable individual flags is in *Strictness Flags*.
+surprises. The order in which to enable individual flags is in [*Strictness Flags*](/docs/strictness-flags).
 
 ### A ratchet
 
@@ -230,8 +230,8 @@ During the migration you will leave temporary things behind. Keep them visible a
 
 - Mark deferrals with `@ts-expect-error` and a ticket (it complains when the underlying
   problem is fixed), never `@ts-ignore`.
-- Mark `any` with a comment saying why, and search for them regularly (*Avoiding any*).
-- Replace `as` casts with real validation at boundaries (*unknown at the Boundary*).
+- Mark `any` with a comment saying why, and search for them regularly ([*Avoiding any*](/docs/avoiding-any)).
+- Replace `as` casts with real validation at boundaries ([*unknown at the Boundary*](/docs/unknown-at-the-boundary)).
 
 The migration is not finished when the last file is renamed. It is finished when the
 escape hatches are gone.

@@ -109,7 +109,7 @@ export type { ReactNode };
 
 `verbatimModuleSyntax` is the stricter, simpler rule: an import or export without `type` is
 always kept, and one with `type` is always removed. It makes the output predictable for any
-tool, and it is what this site uses (*Strictness Flags* shows its error).
+tool, and it is what this site uses ([*Strictness Flags*](/docs/strictness-flags) shows its error).
 
 ## JSON: `resolveJsonModule`
 
@@ -154,7 +154,7 @@ checkJs + "// @ts-nocheck" in file (no errors)           (checking turned off fo
 ```
 
 So you can check JavaScript **file by file**, in either direction, without converting it.
-That is the basis of the migration path in *Migrating JavaScript to TypeScript*.
+That is the basis of the migration path in [*Migrating JavaScript to TypeScript*](/docs/migrating-js-to-ts).
 
 ## What `tsc` writes: emit options
 
@@ -200,7 +200,7 @@ you emit, or to the project root as `tsconfig.tsbuildinfo` when you do not.
 By default TypeScript loads **every** `@types/*` package it finds, making their globals
 available everywhere. Setting `"types": ["node"]` loads only those. This matters more than it
 looks: `@types/node` is large, declares globals like `process` and `Buffer`, and, as the
-`lib` examples in *tsconfig Essentials* showed, can pull in newer library declarations
+`lib` examples in [*tsconfig Essentials*](/docs/tsconfig-essentials) showed, can pull in newer library declarations
 behind your back. A browser-only project usually should not load it.
 
 ## A setup for each situation

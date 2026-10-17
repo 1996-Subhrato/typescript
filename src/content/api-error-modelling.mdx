@@ -54,7 +54,7 @@ about what could arrive, and the guard turns it into the closed union you can sw
 ## The client-side error type
 
 Convert every failure, from any source, into one discriminated union
-(*Discriminated Unions*, *Result & Error Types*).
+([*Discriminated Unions*](/docs/discriminated-unions), [*Result & Error Types*](/docs/result-types)).
 
 ```ts
 export type ApiError =
@@ -75,7 +75,7 @@ errors; `rate-limited` has the wait; `unauthenticated` needs no payload at all.
 ## Parsing the error body: `unknown` again
 
 An error response is also data from outside, so it is `unknown` first
-(*unknown at the Boundary*):
+([*unknown at the Boundary*](/docs/unknown-at-the-boundary)):
 
 ```ts
 type ApiError =
@@ -213,7 +213,7 @@ failure mode gets a user-facing message instead of a blank screen.
 
 ## Narrowing to one kind
 
-`Extract` (*Utility Types: Unions & Functions*) pulls a single member out, so a function
+`Extract` ([*Utility Types: Unions & Functions*](/docs/utility-types-unions)) pulls a single member out, so a function
 can demand exactly the error it handles:
 
 ```ts
@@ -265,12 +265,12 @@ errors.nickname; // Error: Property 'nickname' does not exist on type 'FieldErro
 ```
 
 Unknown fields from the server are dropped, and the form sees only fields it owns. The
-same `FieldErrors` shape is what the Server Actions form state used (*Server Actions &
-Forms*).
+same `FieldErrors` shape is what the Server Actions form state used ([*Server Actions &
+Forms*](/docs/nextjs-server-actions)).
 
 ## Return it, or throw it?
 
-*Result & Error Types* argued for returning expected failures. Sometimes a library wants an
+[*Result & Error Types*](/docs/result-types) argued for returning expected failures. Sometimes a library wants an
 exception (a data-fetching library, an error boundary). Keep the typed error and carry it
 inside the exception:
 

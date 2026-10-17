@@ -138,8 +138,8 @@ function Input({ size = "sm", ...rest }: InputProps) {
 
 ## Props that depend on each other
 
-Use a discriminated union when some props only make sense together (*Discriminated
-Unions*).
+Use a discriminated union when some props only make sense together ([*Discriminated
+Unions*](/docs/discriminated-unions)).
 
 ```tsx
 type ActionProps =
@@ -174,7 +174,7 @@ function Welcome({ name }: { name: string }) {
 ```
 
 Prefer the plain function. `FC` adds nothing useful now that it no longer implies
-`children`, and it cannot be generic (*Generic Components*). Leave the return type off;
+`children`, and it cannot be generic ([*Generic Components*](/docs/react-generic-components)). Leave the return type off;
 inference handles it.
 
 ## Common mistakes

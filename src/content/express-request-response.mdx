@@ -124,8 +124,8 @@ app.post(
 
 > **This is a claim, not a check.** The `CreateUserBody` annotation tells the compiler what
 > to expect. It does not verify what the client actually sent. A client can post `{}` and the
-> types will say `name` is a `string`. Runtime validation is covered in *DTOs & Runtime
-> Validation* — treat this typing as step one only.
+> types will say `name` is a `string`. Runtime validation is covered in [*DTOs & Runtime
+> Validation*](/docs/dtos-and-validation) — treat this typing as step one only.
 
 The four-argument `Request<...>` is noisy. A local alias keeps handlers readable:
 

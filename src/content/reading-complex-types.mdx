@@ -23,7 +23,7 @@ TypeScript.
    `{ id: number; name: string }` and work it through step by step.
 4. **Read `infer` as a pattern match.** "If the input looks like *this*, call this part `X`."
 5. **Check for distribution.** A conditional whose checked type is a *bare* type parameter
-   distributes over unions (*Conditional Types & infer*).
+   distributes over unions ([*Conditional Types & infer*](/docs/conditional-types)).
 6. **Work inside-out.** Evaluate the innermost expression first, then the one around it.
 7. **Make the compiler show you** intermediate results (see the tools below).
 
@@ -69,7 +69,7 @@ Work inside-out with `T = User` and `K = "passwordHash"`:
 | 2 | `Exclude<keyof User, "passwordHash">` | `"id" \| "name"` |
 | 3 | `Pick<User, "id" \| "name">` | `{ id: number; name: string }` |
 
-And it explains something that surprised many readers of *Utility Types: Objects*: why
+And it explains something that surprised many readers of [*Utility Types: Objects*](/docs/utility-types-objects): why
 `Omit<User, "pasword">` (a typo) does not error. The constraint is `K extends keyof any`,
 which means *any string, number or symbol*, not `keyof T`. With the typo, step 2 removes
 nothing, and the result is the full `User`.

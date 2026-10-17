@@ -101,7 +101,7 @@ export class UserService {
 }
 ```
 
-Expected failures are returned as a `Result` (*Result & Error Types*), so the controller
+Expected failures are returned as a `Result` ([*Result & Error Types*](/docs/result-types)), so the controller
 **must** decide what each one means over HTTP.
 
 ## The controller: translate to HTTP
@@ -205,7 +205,7 @@ const incomplete: UserRepository = { // Error: 'findByEmail' and 'create' are mi
 };
 ```
 
-This is *Structural Typing & Compatibility* paying off: a test double is just an object.
+This is [*Structural Typing & Compatibility*](/docs/structural-typing) paying off: a test double is just an object.
 
 ## Common mistakes
 
