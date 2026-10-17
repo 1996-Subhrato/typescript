@@ -59,13 +59,13 @@ Type-level programming: transforming types instead of values.
 
 ## Level 4a — React + TypeScript · *Phase 5* · 7 topics
 
-1. **Component Props** — props, `children`, reusable prop contracts
-2. **useState & useReducer** — inferred vs explicit state, typed reducers and actions
-3. **useRef & useContext** — DOM refs vs mutable refs, context without null checks everywhere
-4. **Events & Forms** — the event types you actually need, typed form handling
-5. **Custom Hooks** — return-type design, tuple vs object, generic hooks
-6. **Generic Components** — lists, tables and selects that preserve their item type
-7. **Async Data in Components** — loading/error/success as a discriminated union
+1. **Component Props** — props, `children`, reusable prop contracts ✅
+2. **useState & useReducer** — inferred vs explicit state, typed reducers and actions ✅
+3. **useRef & useContext** — DOM refs vs mutable refs, context without null checks everywhere ✅
+4. **Events & Forms** — the event types you actually need, typed form handling ✅
+5. **Custom Hooks** — return-type design, tuple vs object, generic hooks ✅
+6. **Generic Components** — lists, tables and selects that preserve their item type ✅
+7. **Async Data in Components** — loading/error/success as a discriminated union ✅
 
 ## Level 4b — Node.js + Express · *Phase 6* · 6 topics
 

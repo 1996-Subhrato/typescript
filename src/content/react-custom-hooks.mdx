@@ -1,0 +1,235 @@
+# Custom Hooks
+
+## What
+
+A custom hook is a function that calls other hooks. Typing one is typing a function: the
+interesting decisions are the **return shape** and, for reusable hooks, **generics**.
+
+## Returning a tuple: `as const`
+
+A returned array literal is inferred as an array of a union, not a tuple.
+
+```tsx
+import { useCallback, useState } from "react";
+
+function useToggleBroken(initial = false) {
+  const [on, setOn] = useState(initial);
+  const toggle = useCallback(() => setOn((value) => !value), []);
+  return [on, toggle]; // inferred: (boolean | (() => void))[]
+}
+
+function Menu() {
+  const [isOpen, toggle] = useToggleBroken();
+  return <button onClick={() => toggle()}>{String(isOpen)}</button>; // Error: This expression is not callable
+}
+```
+
+```tsx
+import { useCallback, useState } from "react";
+
+export function useToggle(initial = false) {
+  const [on, setOn] = useState(initial);
+  const toggle = useCallback(() => setOn((value) => !value), []);
+  return [on, toggle] as const; // readonly [boolean, () => void]
+}
+
+function Menu() {
+  const [isOpen, toggle] = useToggle();
+  return <button onClick={() => toggle()}>{String(isOpen)}</button>; // fine
+}
+```
+
+`as const` turns the array into a `readonly` tuple with one type per position. For a
+public hook, you can instead write the return type explicitly:
+`: readonly [boolean, () => void]`.
+
+## Tuple or object?
+
+| Return | When |
+| ------ | ---- |
+| Tuple `[value, setter]` | Two values, and callers will rename them freely (`useState`-style) |
+| Object `{ a, b, c }` | Three or more values, or callers usually need only some |
+
+```ts
+import { useState } from "react";
+
+type CounterControls = {
+  count: number;
+  increment: () => void;
+  decrement: () => void;
+  reset: () => void;
+};
+
+export function useCounter(initial = 0): CounterControls {
+  const [count, setCount] = useState(initial);
+  return {
+    count,
+    increment: () => setCount((c) => c + 1),
+    decrement: () => setCount((c) => c - 1),
+    reset: () => setCount(initial),
+  };
+}
+```
+
+Naming the return type as an explicit `type` documents the hook's API and makes it
+importable elsewhere.
+
+## Generic hooks
+
+A hook that stores or transforms "some value" should be generic, so the caller's type
+flows through.
+
+```tsx
+import { useEffect, useState } from "react";
+
+export function useDebounce<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(id);
+  }, [value, delayMs]);
+
+  return debounced;
+}
+
+function Results() {
+  const query = useDebounce("typescript", 300); // string
+  const page = useDebounce(2, 300); // number
+  return <p>{query.toUpperCase()} {page + 1}</p>;
+}
+```
+
+### A trustworthy `useLocalStorage`
+
+The naive version asserts what comes out of storage.
+
+```ts
+import { useCallback, useState } from "react";
+
+export function useLocalStorage<T>(key: string, initialValue: T) {
+  const [value, setValue] = useState<T>(() => {
+    const stored = window.localStorage.getItem(key);
+    return stored === null ? initialValue : (JSON.parse(stored) as T); // trusts storage
+  });
+
+  const set = useCallback(
+    (next: T) => {
+      setValue(next);
+      window.localStorage.setItem(key, JSON.stringify(next));
+    },
+    [key],
+  );
+
+  return [value, set] as const;
+}
+```
+
+Storage is something the user (or an older version of your app) can change, so
+`JSON.parse(...) as T` is a lie waiting to happen. Accept a type guard and fall back
+when the stored value is not valid:
+
+```tsx
+import { useCallback, useState } from "react";
+
+export function useLocalStorage<T>(
+  key: string,
+  initialValue: T,
+  isValid: (value: unknown) => value is T,
+) {
+  const [value, setValue] = useState<T>(() => {
+    const stored = window.localStorage.getItem(key);
+    if (stored === null) return initialValue;
+    try {
+      const parsed: unknown = JSON.parse(stored);
+      return isValid(parsed) ? parsed : initialValue;
+    } catch {
+      return initialValue;
+    }
+  });
+
+  const set = useCallback(
+    (next: T) => {
+      setValue(next);
+      window.localStorage.setItem(key, JSON.stringify(next));
+    },
+    [key],
+  );
+
+  return [value, set] as const;
+}
+
+type Theme = "light" | "dark";
+
+function isTheme(value: unknown): value is Theme {
+  return value === "light" || value === "dark";
+}
+
+function ThemeSwitch() {
+  const [theme, setTheme] = useLocalStorage<Theme>("theme", "light", isTheme);
+  return (
+    <button
+      onClick={() => {
+        setTheme("dark");
+        setTheme("blue"); // Error: '"blue"' is not assignable to 'Theme'
+      }}
+    >
+      {theme}
+    </button>
+  );
+}
+```
+
+Now the hook cannot return a value its guard rejected.
+
+> **Server rendering caution.** `window.localStorage` does not exist on the server. In a
+> Next.js app this initializer throws while the page is rendered on the server, and reading
+> storage during the first client render would also make the HTML differ from the server's
+> (a hydration mismatch). For server-rendered code, read storage in an effect or use
+> `useSyncExternalStore`. The *Next.js + TypeScript* level returns to this boundary.
+
+## Inference and explicit type arguments
+
+`useLocalStorage("theme", "light", guard)` infers `T` from the arguments. When a literal
+union is intended, state it: `useLocalStorage<Theme>(...)`. Otherwise an argument like
+`"light"` can widen to `string`.
+
+## Timers: `ReturnType<typeof setTimeout>`
+
+With both DOM and Node typings present, `setTimeout` returns `NodeJS.Timeout` in one
+config and `number` in another. Do not hard-code either:
+
+```ts
+import { useRef } from "react";
+
+export function useTimeout() {
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  function start(callback: () => void, delayMs: number): void {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(callback, delayMs);
+  }
+
+  function cancel(): void {
+    clearTimeout(timer.current);
+  }
+
+  return { start, cancel };
+}
+```
+
+## Common mistakes
+
+- **Returning an array without `as const`.** The destructured members become a union.
+- **A tuple of five things.** Return an object.
+- **`JSON.parse(...) as T`** for data that came from outside the program.
+- **Hard-coding `number` or `NodeJS.Timeout`** for timer handles.
+- **Hooks that accept `any`** for their value, which breaks type flow into the caller.
+
+## Practice
+
+1. Write `usePrevious<T>(value: T): T | undefined`.
+2. Write `useMediaQuery(query: string): boolean` and `useWindowSize()` returning
+   `{ width: number; height: number }`.
+3. Add a `parse` argument to `useLocalStorage` so stored values from an older format can
+   be migrated.

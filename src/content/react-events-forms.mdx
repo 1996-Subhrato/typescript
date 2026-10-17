@@ -1,0 +1,267 @@
+# Events & Forms
+
+## What
+
+React wraps browser events in typed **synthetic events**. The type is
+`SomeEvent<ElementType>`: which event, on which element. That element type is what makes
+`event.currentTarget.value` known to be a string.
+
+## Inline handlers need no annotation
+
+When you write the handler inside the JSX, TypeScript infers the event type from the prop.
+
+```tsx
+import { useState } from "react";
+
+function SearchBox() {
+  const [query, setQuery] = useState("");
+
+  return (
+    <input
+      value={query}
+      onChange={(event) => setQuery(event.target.value)} // event: ChangeEvent<HTMLInputElement>
+      onKeyDown={(event) => {
+        if (event.key === "Enter") console.log(query); // event: KeyboardEvent<HTMLInputElement>
+      }}
+    />
+  );
+}
+```
+
+## Extracted handlers need the type
+
+Pulled out of the JSX, a handler has no context, so you supply it.
+
+```tsx
+import { useState } from "react";
+import type { ChangeEvent, FormEvent } from "react";
+
+function NewsletterForm() {
+  const [email, setEmail] = useState("");
+
+  function handleChange(event: ChangeEvent<HTMLInputElement>) {
+    setEmail(event.target.value);
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    console.log("Subscribing", email);
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input type="email" value={email} onChange={handleChange} />
+      <button type="submit">Join</button>
+    </form>
+  );
+}
+```
+
+The element type must match where the handler is attached:
+
+```tsx
+import type { ChangeEvent } from "react";
+
+function handleTextArea(event: ChangeEvent<HTMLTextAreaElement>) {
+  console.log(event.target.value);
+}
+
+const wrong = <input onChange={handleTextArea} />; // Error: a textarea handler cannot handle an input event
+```
+
+### The events you will actually use
+
+| Event type | Typical prop | Notes |
+| ---------- | ------------ | ----- |
+| `ChangeEvent<HTMLInputElement>` | `onChange` | Also `HTMLSelectElement`, `HTMLTextAreaElement` |
+| `FormEvent<HTMLFormElement>` | `onSubmit` | Use `event.currentTarget` for the form |
+| `MouseEvent<HTMLButtonElement>` | `onClick` | |
+| `KeyboardEvent<HTMLInputElement>` | `onKeyDown` | `event.key` is a string |
+| `FocusEvent<HTMLInputElement>` | `onBlur`, `onFocus` | |
+
+All of these are types, so import them with `import type`.
+
+## `target` vs `currentTarget`
+
+- `currentTarget` is the element the **handler is attached to**: precisely typed.
+- `target` is whatever was **actually clicked**, which could be a child.
+
+```tsx
+import type { MouseEvent } from "react";
+
+function handleClick(event: MouseEvent<HTMLButtonElement>) {
+  event.currentTarget.disabled = true; // OK: it is the button
+  console.log(event.target.value); // Error: Property 'value' does not exist on type 'EventTarget'
+}
+```
+
+Prefer `currentTarget`, except on `ChangeEvent`, where `target` is typed as the input.
+
+## A typed form
+
+Keep the whole form in one typed object, and update fields through a function whose
+parameters are tied together with `keyof`.
+
+```tsx
+import { useState } from "react";
+
+type SignupForm = {
+  email: string;
+  password: string;
+  plan: "free" | "pro";
+};
+
+function Signup() {
+  const [form, setForm] = useState<SignupForm>({ email: "", password: "", plan: "free" });
+
+  function setField<K extends keyof SignupForm>(key: K, value: SignupForm[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function demo() {
+    setField("email", "ada@example.com"); // fine
+    setField("plan", "enterprise"); // Error: '"enterprise"' is not assignable to '"free" | "pro"'
+    setField("age", 30); // Error: '"age"' is not assignable to 'keyof SignupForm'
+  }
+
+  return (
+    <form onReset={demo}>
+      <input value={form.email} onChange={(e) => setField("email", e.target.value)} />
+      <input type="password" value={form.password} onChange={(e) => setField("password", e.target.value)} />
+    </form>
+  );
+}
+```
+
+`setField<K extends keyof SignupForm>(key: K, value: SignupForm[K])` makes the value's
+type depend on the key — the generics from *Constraints, keyof & Indexed Access* in
+daily use.
+
+### The shortcut that quietly drops safety
+
+Many tutorials use one handler for every input, keyed by `name`:
+
+```tsx
+import { useState } from "react";
+import type { ChangeEvent } from "react";
+
+type SignupForm = { email: string; password: string; plan: "free" | "pro" };
+
+function Signup() {
+  const [form, setForm] = useState<SignupForm>({ email: "", password: "", plan: "free" });
+
+  function handleChange(event: ChangeEvent<HTMLInputElement>) {
+    const { name, value } = event.target;
+    setForm((prev) => ({ ...prev, [name]: value })); // compiles, but `name` is any string
+  }
+
+  return <input name="plan" value={form.email} onChange={handleChange} />;
+}
+```
+
+It compiles, yet nothing stops `name="plan"` from receiving `"banana"`. For fields with
+restricted values, use a typed setter and narrow the value.
+
+### Selects with a fixed set of values
+
+`event.target.value` is always `string`. Narrow it with a type guard instead of casting.
+
+```tsx
+import { useState } from "react";
+
+const PLANS = ["free", "pro"] as const;
+type Plan = (typeof PLANS)[number];
+
+function isPlan(value: string): value is Plan {
+  return (PLANS as readonly string[]).includes(value);
+}
+
+function PlanPicker() {
+  const [plan, setPlan] = useState<Plan>("free");
+
+  return (
+    <select
+      value={plan}
+      onChange={(event) => {
+        if (isPlan(event.target.value)) setPlan(event.target.value);
+      }}
+    >
+      {PLANS.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
+  );
+}
+```
+
+## Uncontrolled forms with `FormData`
+
+For simple forms you can skip state and read the values on submit.
+
+```tsx
+import type { FormEvent } from "react";
+
+function Contact() {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+
+    const email = data.get("email"); // FormDataEntryValue | null — a string, a File, or null
+    if (typeof email !== "string") return;
+
+    console.log(email.toLowerCase());
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input name="email" type="email" />
+      <button type="submit">Send</button>
+    </form>
+  );
+}
+```
+
+`FormData` is untyped: `get` returns `string | File | null`, so you must narrow. Validate
+the values before using them as domain data.
+
+### React 19 form actions
+
+A form's `action` can be a function that receives the `FormData` directly:
+
+```tsx
+function Subscribe() {
+  async function subscribe(formData: FormData) {
+    const email = formData.get("email");
+    if (typeof email === "string") console.log("subscribing", email);
+  }
+
+  return (
+    <form action={subscribe}>
+      <input name="email" type="email" />
+      <button type="submit">Join</button>
+    </form>
+  );
+}
+```
+
+Server Actions in Next.js are the same idea, running on the server (*Server Actions &
+Forms*).
+
+## Common mistakes
+
+- **Typing events as `any`.** You lose `event.target.value` completion and checks.
+- **Using `target` where `currentTarget` is meant.**
+- **Casting `event.target.value as Plan`** instead of checking it.
+- **A single `[name]: value` handler for fields with restricted values.**
+- **Forgetting `preventDefault()`** in `onSubmit`. TypeScript cannot catch it.
+
+## Practice
+
+1. Write a controlled `LoginForm` with `email` and `password`, a typed `setField`, and a
+   submit handler.
+2. Add a checkbox `remember: boolean`. Which event type and property do you read for a
+   checkbox, and why is `value` the wrong one?
+3. Write a `parseContactForm(data: FormData)` returning
+   `{ email: string; message: string } | null`, with no assertions.

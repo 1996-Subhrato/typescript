@@ -9,16 +9,16 @@
 
 ## Current Phase
 
-**Phase 4 — Advanced Types** &nbsp;·&nbsp; Status: ✅ **Complete**
+**Phase 5 — React + TypeScript** &nbsp;·&nbsp; Status: ✅ **Complete**
 
 ## Current Topic
 
-None in progress. Levels 1-3 (Fundamentals, Practical, Advanced Types) are fully written.
+None in progress. Levels 1-3 and the React level are fully written.
 
 ## Current Status
 
-The user asked for Phases 4, 5, 6 and 7 in one request; they are being built back to back as
-separate, individually verified and individually committed phases. Phase 4 is done and committed.
+The user asked for Phases 4, 5, 6 and 7 in one request; they are built back to back as separate,
+individually verified and individually committed phases. Phases 4 and 5 are done and committed.
 Default behaviour still stands: **one phase per request, then stop**, unless the user asks for more.
 
 ---
@@ -113,13 +113,32 @@ nested-backtick inline code span (MDX read it as a live expression). The gate on
 so it could not see it. It now also lints prose for stray `{ }` and `<tag`, regression-tested by
 reintroducing the exact bug.
 
+### Phase 5 — React + TypeScript ✅
+
+Seven topics written: `react-props`, `react-state`, `react-refs-context`, `react-events-forms`,
+`react-custom-hooks`, `react-generic-components`, `react-async-data`.
+
+Covers: props / `children` / `ReactNode` / `ComponentProps` / discriminated props, `useState` inference vs
+explicit, `useReducer` with action unions, `useRef` (DOM vs mutable) and React 19 `ref`-as-prop, context with
+a guard hook, event types and typed forms (`FormData`, form `action`), custom-hook return shapes (`as const`),
+generic hooks, generic components (`List<T>`, `Select<T>`, `Table<T>`), async state as a discriminated union,
+a `useFetch<T>` that validates with a `parse` function, and `use` + Suspense.
+
+**Verified against the installed React 19 types, not memory:** `useRef` requires an argument; `FC` has no
+implicit `children`; global `JSX` is gone (`React.JSX` remains); `<Context.Provider>` still compiles;
+`ComponentProps<"input">` carries `ref`.
+
+**Lint-checked against the project's own ESLint:** every React block was extracted and linted. The first pass
+found real defects in my examples (hook calls at module top level; `setState`/`dispatch` called during render;
+a ref written during render). All were fixed so examples are valid React, not merely valid types. Final result:
+zero `react-hooks/*` findings.
+
 ---
 
 ## Pending Phases
 
 | Phase | Name | Topics | Notes |
 | ----- | ---- | ------ | ----- |
-| 5 | React + TypeScript | 7 | |
 | 6 | Node.js + Express | 6 | |
 | 7 | Next.js + TypeScript | 5 | Uses this repo as the worked example |
 | 8 | Real-World API Typing | 6 | |
@@ -128,50 +147,44 @@ reintroducing the exact bug.
 
 Full topic list: [`ROADMAP.md`](./ROADMAP.md). Machine-readable version: `src/lib/registry.ts`.
 
-**Content progress: 30 / 64 topics published** (Level 1: 11/11 · Level 2: 9/9 · Level 3: 10/10 · rest 0).
+**Content progress: 37 / 64 topics published** (Level 1: 11/11 · Level 2: 9/9 · Level 3: 10/10 · React: 7/7 · rest 0).
 
 ---
 
 ## Next Topic
 
-**Phase 5 — React + TypeScript.** Seven topics, in registry order:
+**Phase 6 — Node.js + Express.** Six topics, in registry order:
 
-1. `react-props` — typing props, `children` (`ReactNode`), `ComponentProps<"button">` to extend native elements, discriminated prop contracts, `FC` vs plain functions
-2. `react-state` — `useState` inference vs `useState<User | null>(null)`, functional updates, `useReducer` with a discriminated action union
-3. `react-refs-context` — `useRef<HTMLInputElement>(null)` vs mutable refs, React 19 `ref` as a prop, `createContext` + a guard hook so consumers never null-check
-4. `react-events-forms` — `ChangeEvent`, `FormEvent`, `MouseEvent`, `FormData`, controlled inputs, typed form state
-5. `react-custom-hooks` — tuple vs object returns (`as const`), generic hooks (`useLocalStorage<T>`), `useDebounce<T>`
-6. `react-generic-components` — `List<T>`, `Table<T>` with `keyof`, `Select<T>`; generics in TSX
-7. `react-async-data` — loading/error/success as a discriminated union; ties back to `discriminated-unions` and `result-types`
+1. `express-request-response` — `Request<Params, ResBody, ReqBody, ReqQuery>`, typing `params` / `body` / `query` / response payloads
+2. `express-middleware` — `RequestHandler`, `NextFunction`, `ErrorRequestHandler`, augmenting `Request` (`declaration-files` already points here)
+3. `express-layers` — controllers, services, repositories; interfaces at the seams; test doubles (`structural-typing` points here)
+4. `dtos-and-validation` — a type is not a check; hand-written guards vs `zod` (`z.infer`); `type-guards` points here
+5. `env-and-config` — typed environment variables that fail loudly at boot (`process.env` is `string | undefined`)
+6. `database-models` — row types vs insert types vs API types, branded ids (`branded-types` points here)
 
-**React 19 specifics the content must get right** (installed: `react` 19.2.8, `@types/react` 19.2.18):
-`useRef` now requires an argument; `ref` is an ordinary prop (no `forwardRef` needed); the global
-`JSX` namespace is gone (use `React.JSX` / `ReactElement`); `FC` no longer implies `children`;
-`useActionState` and `use` exist. Verify each against the installed types, not memory.
+**Read `@types/express` 5.0.6 before writing** (`node_modules/@types/express*/`): Express 5 changed handler return types
+and `req.query`. `express` itself is NOT installed — only types — so examples must only *type-check*, never run.
+`zod` 4.6.7 is installed for verification. `process.env` typings come from `@types/node` 20.
 
-**Process per topic:** write `src/content/<slug>.mdx` (use ` ```tsx ` for components), run
-`npm run check:content -- <slug>`, then at the end of the phase flip statuses in `src/lib/registry.ts`.
-**Run `npm run build` before committing** — the gate cannot see render-time MDX errors beyond its prose lint.
+**Process per topic:** write `src/content/<slug>.mdx`, `npm run check:content -- <slug>`, publish all at the end of the
+phase, then `typecheck` / `lint` / `check:content` / `build` / `check:pages`, update docs, commit.
+Remember decision #17: run `npm run build` before committing, and #20: lint hook-bearing examples.
 
 ### Later phases at a glance
 
 | Phase | Topics |
 | ----- | ------ |
-| 6 Node + Express | `express-request-response`, `express-middleware`, `express-layers`, `dtos-and-validation`, `env-and-config`, `database-models` (`@types/express` 5.0.6 and `zod` 4.6.7 are installed for verification) |
-| 7 Next.js | `nextjs-pages-layouts`, `nextjs-server-client`, `nextjs-route-handlers`, `nextjs-server-actions`, `nextjs-config` — read `node_modules/next/dist/docs/` first (AGENTS.md) |
+| 7 Next.js | `nextjs-pages-layouts`, `nextjs-server-client`, `nextjs-route-handlers`, `nextjs-server-actions`, `nextjs-config` — read `node_modules/next/dist/docs/` first (AGENTS.md); some snippets need `{/* check:skip */}` because `PageProps` / `RouteContext` are generated from the real route tree |
+| 8 Real-World API Typing | `typing-api-responses`, `generic-api-client`, `pagination-and-envelopes`, `unknown-at-the-boundary`, `api-contract-modelling`, `api-error-modelling` |
 
-### Forward references the Phase 4 content makes
+### Open forward references
 
 `result-types` → *Error Modelling* (Phase 8) and *DTOs & Runtime Validation* (Phase 6) ·
-`declaration-files` → *Middleware & Error Handling* (Phase 6, `Request` augmentation) ·
-`branded-types` → *Database Models* (Phase 6, branded ids) · `structural-typing` → fake/test doubles in
-*Controllers, Services, Repositories* (Phase 6).
-
-### Earlier forward references (still open)
-
-`type-assertions` → *unknown at the Boundary* (Phase 8) · `generics-basics` → *A Generic API Client*
-(Phase 8) · `type-guards` → *DTOs & Runtime Validation* (Phase 6) · `type-aliases-and-interfaces` →
-*interface vs type in Practice* (Phase 9) · `abstract-and-interfaces` → repository/service layers (Phase 6).
+`type-assertions` → *unknown at the Boundary* (Phase 8) · `generics-basics` → *A Generic API Client* (Phase 8) ·
+`react-async-data` (its `parse` function) → *unknown at the Boundary* (Phase 8) ·
+`react-custom-hooks` (SSR caution) → *Server & Client Components* (Phase 7) ·
+`react-events-forms` (form `action`) → *Server Actions & Forms* (Phase 7) ·
+`type-aliases-and-interfaces` → *interface vs type in Practice* (Phase 9).
 
 ---
 
@@ -271,6 +284,17 @@ show an idiomatic solution. Phase 10 should consolidate these into a graded set.
     `express`, `zod` and `next`, is excluded from the project tsconfig, ESLint and git, and is deleted
     after every run.
 
+20. **React examples are linted, not just compiled.** *(Phase 5)* The project's ESLint (`react-hooks/*`, incl. the
+    React Compiler rules `set-state-in-effect`, `refs`, `set-state-in-render`) rejected several of my first examples.
+    Rule: never teach a pattern this repo's own linter refuses. Hook usages go inside components; state setters and
+    `dispatch` go in handlers or effects, never in render; refs are mutated only in handlers/effects. Method: extract
+    the react-* blocks to a temp folder under `src/`, `eslint --format json`, filter `react-hooks/*`, delete the folder.
+    (`@typescript-eslint/no-unused-vars` noise on demo snippets is expected.)
+
+21. **`useFetch` derives "loading" instead of storing it.** *(Phase 5)* Only settled results (`success` / `error`, tagged with
+    their `url`) are stored; loading is derived by comparing the stored `url` with the current one. This avoids
+    synchronous `setState` in an effect and teaches "derive, don't sync". `parse` must be a stable (module-level) function.
+
 ---
 
 ## Project Architecture
@@ -287,7 +311,7 @@ D:\TypeScript
 │   │       └── [slug]/page.tsx  # Renders one MDX topic + TOC + prev/next
 │   ├── components/              # SiteHeader, Sidebar, MobileNav, Search,
 │   │                            # TableOfContents, PrevNextNav, CodeBlock
-│   ├── content/                 # 30 MDX topics — one file per registry slug
+│   ├── content/                 # 37 MDX topics — one file per registry slug
 │   ├── lib/
 │   │   ├── registry.ts          # Source of truth: levels, topics, order, status
 │   │   ├── docs.ts              # Derived helpers — SAFE for client components
@@ -330,21 +354,14 @@ failing line; use ```` ```js ```` for JavaScript, which is not compiled.
 
 ## Last Development Work
 
-Phase 4 — Advanced Types (10 topics), plus a tooling commit before it.
+Phase 5 — React + TypeScript (7 topics).
 
-**Verification (all green):** `npm run typecheck` · `npm run lint` · `npm run check:content` →
-30 topics · 228 blocks · 2 skipped (`.d.ts` script files) · 76/76 claimed errors real · 0 problems ·
-`npm run build` → 34 static pages · `npm run check:pages` → all 30 pages OK (200, TOC↔heading parity,
-prev/next present).
+**Verification (all green):** `typecheck` · `lint` · `check:content` → 37 topics · 277 blocks · 2 skipped · 97/97 claimed
+errors real · 0 problems · `build` → 41 static pages · `check:pages` → all 37 pages OK. React lint pass: 49 blocks, 0
+`react-hooks/*` findings after fixes.
 
-**Type-level claims:** 16 result-type comments (`Paths`, `ExtractParams`, `PathValue`, `Getters`, the
-9-member event union, `ToArray` distribution, `Parameters`/`ReturnType` of a real function, ...) were
-asserted with an `Equal` probe, with a negative control that failed as it should. All held.
-
-**Prose corrected during review:** the TS recursion-depth figures (≈100, 1,000 for tail recursion), the
-union-size cap (100,000), and a malformed error-message comment.
-
-**Defect found and fixed:** the `${string}` MDX crash described in decision #17.
+**Defects found by lint and fixed before publishing:** top-level hook calls, `setState`/`dispatch` in render, a ref
+mutated during render. Also added a server-rendering caution to `useLocalStorage` (`window` is undefined on the server).
 
 ---
 
@@ -388,3 +405,4 @@ union-size cap (100,000), and a malformed error-message comment.
 | 2026-10-17 | - | Initialised git, baseline commit `9bec822`. Rewrote `README.md` (curriculum table, scripts, quality gate, how to add a topic). Added `npm run typecheck` (`next typegen && tsc --noEmit`) because bare `tsc` fails on a fresh clone. |
 | 2026-10-17 | - | Tooling: gate compiles `tsx`, resolves react/express/zod/next, counted skip marker; `check:pages` added. Commit `fe0f31e`. |
 | 2026-10-17 | 4 | 10 Advanced Types topics; prose lint added to the gate after an MDX render crash; 16 type-level claims asserted with an Equal probe. |
+| 2026-10-17 | 5 | 7 React topics; examples linted against the repo's react-hooks rules and fixed; React 19 typings verified against installed types. |

@@ -1,0 +1,197 @@
+# Component Props
+
+## What
+
+Props are a component's function parameters, so you type them like any object parameter:
+a `type` or `interface` for the shape, applied to the destructured argument.
+
+```js
+// JavaScript — nothing says what a Badge accepts
+function Badge({ label, count }) {
+  return <span>{label}: {count}</span>;
+}
+```
+
+```tsx
+type BadgeProps = {
+  label: string;
+  count: number;
+};
+
+function Badge({ label, count }: BadgeProps) {
+  return (
+    <span>
+      {label}: {count}
+    </span>
+  );
+}
+
+const ok = <Badge label="Unread" count={3} />;
+const missing = <Badge label="Unread" />; // Error: Property 'count' is missing
+const wrong = <Badge label="Unread" count="3" />; // Error: 'string' is not assignable to 'number'
+```
+
+The compiler now checks every place the component is used, and your editor autocompletes
+the prop names.
+
+## Optional props, defaults and callbacks
+
+```tsx
+type ProductCardProps = {
+  name: string;
+  price: number;
+  currency?: "USD" | "EUR"; // optional
+  onAddToCart: (name: string) => void; // callback prop
+};
+
+function ProductCard({ name, price, currency = "USD", onAddToCart }: ProductCardProps) {
+  return (
+    <article>
+      <h2>{name}</h2>
+      <p>
+        {price} {currency}
+      </p>
+      <button onClick={() => onAddToCart(name)}>Add to cart</button>
+    </article>
+  );
+}
+```
+
+A destructuring default (`currency = "USD"`) both supplies the value and removes
+`undefined` from the type inside the component.
+
+## `children`
+
+Type `children` as `ReactNode`: anything React can render — strings, numbers, elements,
+arrays, `null`.
+
+```tsx
+import type { ReactNode } from "react";
+
+type CardProps = {
+  title: string;
+  children: ReactNode;
+};
+
+function Card({ title, children }: CardProps) {
+  return (
+    <section>
+      <h2>{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+const card = (
+  <Card title="Orders">
+    <p>No orders yet.</p>
+  </Card>
+);
+```
+
+| Type | Means | Use for |
+| ---- | ----- | ------- |
+| `ReactNode` | Anything renderable | `children`, slot props |
+| `ReactElement` | A JSX element only | When you must reject strings and numbers |
+| `() => ReactNode` | A render function | Render props |
+
+Avoid `JSX.Element` as a prop type. It rejects strings and `null`, and the global `JSX`
+namespace no longer exists in React 19's types.
+
+## Extending native element props
+
+A wrapper around `<button>` should accept every real button attribute without you
+re-listing them. `ComponentProps` reads them off the element.
+
+```tsx
+import type { ComponentProps } from "react";
+
+type ButtonProps = ComponentProps<"button"> & {
+  variant?: "primary" | "danger";
+};
+
+function Button({ variant = "primary", className, ...rest }: ButtonProps) {
+  return <button className={`btn btn-${variant} ${className ?? ""}`} {...rest} />;
+}
+
+const save = <Button variant="primary" type="submit" disabled onClick={() => {}} />;
+const typo = <Button variant="secondary" />; // Error: '"secondary"' is not assignable to type '"primary" | "danger" | undefined'
+```
+
+`...rest` forwards everything else (`onClick`, `type`, `disabled`, `aria-*`) to the
+element, fully typed. In React 19 `ref` is an ordinary prop, so `ComponentProps<"button">`
+already includes it and no `forwardRef` wrapper is needed.
+
+When your prop name collides with a native one, `Omit` the native one first:
+
+```tsx
+import type { ComponentProps } from "react";
+
+type InputProps = Omit<ComponentProps<"input">, "size"> & {
+  size?: "sm" | "lg"; // replaces the numeric native `size`
+};
+
+function Input({ size = "sm", ...rest }: InputProps) {
+  return <input className={`input-${size}`} {...rest} />;
+}
+```
+
+## Props that depend on each other
+
+Use a discriminated union when some props only make sense together (*Discriminated
+Unions*).
+
+```tsx
+type ActionProps =
+  | { kind: "link"; href: string }
+  | { kind: "button"; onClick: () => void };
+
+function Action(props: ActionProps) {
+  if (props.kind === "link") {
+    return <a href={props.href}>Open</a>;
+  }
+  return <button onClick={props.onClick}>Run</button>;
+}
+
+const link = <Action kind="link" href="/orders" />;
+const invalid = <Action kind="link" onClick={() => {}} />; // Error: 'onClick' does not exist on the link variant
+```
+
+Impossible combinations, such as a link with an `onClick`, no longer compile.
+
+## `FC` or a plain function?
+
+```tsx
+import type { FC } from "react";
+
+// Older style
+const Greeting: FC<{ name: string }> = ({ name }) => <p>Hello, {name}</p>;
+
+// Preferred
+function Welcome({ name }: { name: string }) {
+  return <p>Hello, {name}</p>;
+}
+```
+
+Prefer the plain function. `FC` adds nothing useful now that it no longer implies
+`children`, and it cannot be generic (*Generic Components*). Leave the return type off;
+inference handles it.
+
+## Common mistakes
+
+- **Typing `children` as `JSX.Element`.** Use `ReactNode`.
+- **Listing native attributes by hand** (`onClick`, `disabled`, `type`, ...). Extend
+  `ComponentProps<"element">`.
+- **Using `any` for event or callback props.** Type the callback's parameters.
+- **Optional props that are secretly required together.** Model them as a union.
+- **Spreading `{...props}` onto a DOM element when `props` contains your own props.**
+  Destructure yours out first.
+
+## Practice
+
+1. Write a `Badge` whose `tone` prop is `"info" | "warning" | "error"` and which also accepts
+   every native `span` attribute.
+2. Write `Modal` with `open: boolean`, `title: string`, `children`, and an `onClose`
+   callback.
+3. Write a `Notice` component where a `dismissible` notice **requires** `onDismiss` and a
+   non-dismissible one forbids it.

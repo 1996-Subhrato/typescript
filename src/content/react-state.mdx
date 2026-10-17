@@ -1,0 +1,198 @@
+# useState & useReducer
+
+## What
+
+`useState` and `useReducer` are generic: `useState<S>` holds a value of type `S`. Most
+of the time TypeScript infers `S` from the initial value; the cases where it cannot are
+the ones worth learning.
+
+## `useState`: when inference is enough
+
+```tsx
+import { useState } from "react";
+
+function Counter() {
+  const [count, setCount] = useState(0); // number
+  const [name, setName] = useState(""); // string
+  const [subscribed, setSubscribed] = useState(false); // boolean
+
+  return (
+    <button onClick={() => setCount(count + 1)}>
+      {name} {count} {String(subscribed)}
+    </button>
+  );
+}
+```
+
+## `useState`: when you must say the type
+
+The initial value does not tell TypeScript everything the state may become.
+
+### Nullable state
+
+```tsx
+import { useState } from "react";
+
+type User = { id: number; name: string };
+
+function Profile() {
+  const [user, setUser] = useState(null); // inferred as null — and only null
+
+  function load() {
+    setUser({ id: 1, name: "Ada" }); // Error: not assignable to 'SetStateAction<null>'
+  }
+
+  return <button onClick={load}>{String(user)}</button>;
+}
+```
+
+```tsx
+import { useState } from "react";
+
+type User = { id: number; name: string };
+
+function Profile() {
+  const [user, setUser] = useState<User | null>(null);
+
+  if (user === null) return <button onClick={() => setUser({ id: 1, name: "Ada" })}>Load</button>;
+  return <p>{user.name}</p>; // narrowed: User
+}
+```
+
+### Empty collections
+
+```tsx
+import { useState } from "react";
+
+function Tags() {
+  const [tags, setTags] = useState([]); // never[] — nothing can ever be added
+
+  function addTag() {
+    setTags(["typescript"]); // Error: 'string' is not assignable to 'never'
+  }
+
+  return <button onClick={addTag}>{tags.length}</button>;
+}
+```
+
+The fix is `useState<string[]>([])`.
+
+### Literal unions
+
+```tsx
+import { useState } from "react";
+
+type Tab = "overview" | "orders" | "settings";
+
+function Tabs() {
+  const [tab, setTab] = useState<Tab>("overview"); // without <Tab> this would be string
+
+  function goToBilling() {
+    setTab("billing"); // Error: '"billing"' is not assignable to 'Tab'
+  }
+
+  return <button onClick={goToBilling}>{tab}</button>;
+}
+```
+
+## Updating state
+
+```tsx
+import { useState } from "react";
+
+type Filters = { search: string; inStock: boolean };
+
+function ProductFilters() {
+  const [filters, setFilters] = useState<Filters>({ search: "", inStock: false });
+
+  return (
+    <input
+      value={filters.search}
+      onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
+    />
+  );
+}
+```
+
+The functional form `(prev) => ...` types `prev` as `Filters` and is what you want
+whenever the new state depends on the old one.
+
+## `useReducer`: state transitions as a typed union
+
+When state has several related fields or many ways to change, model the changes as a
+**discriminated union of actions**. The reducer's parameter types let TypeScript infer
+everything else.
+
+```tsx
+import { useReducer } from "react";
+
+type CartItem = { sku: string; quantity: number };
+
+type CartState = { items: CartItem[] };
+
+type CartAction =
+  | { type: "add"; item: CartItem }
+  | { type: "remove"; sku: string }
+  | { type: "clear" };
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled action: ${JSON.stringify(value)}`);
+}
+
+function cartReducer(state: CartState, action: CartAction): CartState {
+  switch (action.type) {
+    case "add":
+      return { items: [...state.items, action.item] };
+    case "remove":
+      return { items: state.items.filter((item) => item.sku !== action.sku) };
+    case "clear":
+      return { items: [] };
+    default:
+      return assertNever(action);
+  }
+}
+
+function Cart() {
+  const [state, dispatch] = useReducer(cartReducer, { items: [] });
+
+  function demo() {
+    dispatch({ type: "add", item: { sku: "kb-01", quantity: 1 } }); // fine
+    dispatch({ type: "remove" }); // Error: Property 'sku' is missing
+    dispatch({ type: "refund" }); // Error: '"refund"' is not assignable to the action union
+  }
+
+  return <button onClick={demo}>{state.items.length} items</button>;
+}
+```
+
+Both bad dispatches fail to compile: `remove` is missing its `sku`, and `refund` is not an
+action. Add a case to `CartAction` and `assertNever` flags the reducer until you handle
+it.
+
+## `useState` or `useReducer`?
+
+| Prefer `useState` | Prefer `useReducer` |
+| ----------------- | ------------------- |
+| Independent values (a toggle, an input) | Several fields that change together |
+| One or two simple updates | Many distinct transitions |
+| State shape is a primitive | Next state depends on rules, not just a new value |
+
+## Common mistakes
+
+- **`useState(null)` / `useState([])` without a type argument.** The state type becomes
+  `null` or `never[]`.
+- **Storing derived values in state.** If it can be computed from other state or props,
+  compute it during render.
+- **Mutating state** (`state.items.push(...)`). Types will not stop you; React will.
+- **A reducer action typed as `{ type: string; payload?: any }`.** It forfeits all checking.
+  Use a union.
+- **Forgetting `assertNever`** and letting the reducer silently ignore new actions.
+
+## Practice
+
+1. Type a `useState` that holds `{ id: number; name: string } | undefined`, and render
+   safely when it is `undefined`.
+2. Add `{ type: "setQuantity"; sku: string; quantity: number }` to `CartAction` and watch
+   the reducer fail until you handle it.
+3. Model a checkout wizard with `useReducer`: steps `"cart" | "shipping" | "payment" | "done"`
+   and actions `next`, `back`, `goTo(step)`.

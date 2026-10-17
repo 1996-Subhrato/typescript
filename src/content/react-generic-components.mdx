@@ -1,0 +1,256 @@
+# Generic Components
+
+## What
+
+A generic component works with different data shapes while keeping the connection between
+its props: *"the items are `Product`s, so the render function receives a `Product`."*
+Without generics you choose between duplicating the component and typing everything as
+`any`.
+
+## The problem
+
+```tsx
+import type { ReactNode } from "react";
+
+type LooseListProps = {
+  items: unknown[];
+  renderItem: (item: unknown) => ReactNode;
+};
+
+function LooseList({ items, renderItem }: LooseListProps) {
+  return <ul>{items.map((item, index) => <li key={index}>{renderItem(item)}</li>)}</ul>;
+}
+
+const list = <LooseList items={[{ name: "Keyboard" }]} renderItem={(item) => item.name} />; // Error: 'item' is of type 'unknown'
+```
+
+`unknown` is honest but useless here: the caller knows the item type, and the component
+throws that knowledge away.
+
+## A generic list
+
+Declare a type parameter on the props type and on the component.
+
+```tsx
+import type { ReactNode } from "react";
+
+type ListProps<T> = {
+  items: readonly T[];
+  getKey: (item: T) => string | number;
+  renderItem: (item: T) => ReactNode;
+};
+
+function List<T>({ items, getKey, renderItem }: ListProps<T>) {
+  return (
+    <ul>
+      {items.map((item) => (
+        <li key={getKey(item)}>{renderItem(item)}</li>
+      ))}
+    </ul>
+  );
+}
+
+type Product = { id: number; name: string; price: number };
+
+declare const products: Product[];
+
+const ok = (
+  <List
+    items={products}
+    getKey={(product) => product.id} // product: Product, inferred from `items`
+    renderItem={(product) => <span>{product.name}</span>}
+  />
+);
+
+const wrong = (
+  <List
+    items={products}
+    getKey={(product) => product.id}
+    renderItem={(product) => <span>{product.title}</span>} // Error: Property 'title' does not exist on type 'Product'
+  />
+);
+```
+
+`T` is inferred from `items`. Every callback after it is typed automatically, with no
+annotation in the JSX.
+
+### Stating `T` explicitly
+
+When inference is not enough, pass the type argument in the tag:
+
+```tsx
+type ListProps<T> = { items: readonly T[]; renderItem: (item: T) => string };
+
+function List<T>({ items, renderItem }: ListProps<T>) {
+  return <ul>{items.map((item, i) => <li key={i}>{renderItem(item)}</li>)}</ul>;
+}
+
+const empty = <List<string> items={[]} renderItem={(item) => item.toUpperCase()} />;
+```
+
+### Generic arrow components in `.tsx`
+
+A bare `<T>(...) =>` is ambiguous with a JSX tag in `.tsx` files. Add a trailing comma, or
+use a function declaration (clearer).
+
+```tsx
+import type { ReactNode } from "react";
+
+const Row = <T,>({ item, render }: { item: T; render: (item: T) => ReactNode }) => (
+  <div>{render(item)}</div>
+);
+```
+
+## Constraining `T`
+
+Require only what the component actually uses.
+
+```tsx
+import type { ReactNode } from "react";
+
+type Identified = { id: number | string };
+
+type CardListProps<T extends Identified> = {
+  items: readonly T[];
+  renderItem: (item: T) => ReactNode;
+};
+
+function CardList<T extends Identified>({ items, renderItem }: CardListProps<T>) {
+  return (
+    <div>
+      {items.map((item) => (
+        <div key={item.id}>{renderItem(item)}</div> // `id` is available because of the constraint
+      ))}
+    </div>
+  );
+}
+
+type Tag = { label: string };
+declare const tags: Tag[];
+
+const bad = <CardList items={tags} renderItem={(tag) => tag.label} />; // Error: 'Tag' has no 'id'
+```
+
+The constraint removes the `getKey` prop, and a type without an `id` is rejected at the
+call site.
+
+## A generic select
+
+```tsx
+type SelectProps<T> = {
+  options: readonly T[];
+  value: T;
+  onChange: (value: T) => void;
+  getLabel: (option: T) => string;
+  getKey: (option: T) => string;
+};
+
+function Select<T>({ options, value, onChange, getLabel, getKey }: SelectProps<T>) {
+  return (
+    <select
+      value={getKey(value)}
+      onChange={(event) => {
+        const chosen = options.find((option) => getKey(option) === event.target.value);
+        if (chosen !== undefined) onChange(chosen);
+      }}
+    >
+      {options.map((option) => (
+        <option key={getKey(option)} value={getKey(option)}>
+          {getLabel(option)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+type Country = { code: string; name: string };
+declare const countries: Country[];
+declare const selected: Country;
+
+const picker = (
+  <Select
+    options={countries}
+    value={selected}
+    onChange={(country) => console.log(country.code)} // country: Country, not string
+    getLabel={(country) => country.name}
+    getKey={(country) => country.code}
+  />
+);
+```
+
+The component never mentions `Country`, and `onChange` hands back a whole object rather
+than a string.
+
+## A generic table
+
+```tsx
+import type { ReactNode } from "react";
+
+type Column<T> = {
+  header: string;
+  render: (row: T) => ReactNode;
+};
+
+type TableProps<T extends { id: number | string }> = {
+  rows: readonly T[];
+  columns: readonly Column<T>[];
+};
+
+function Table<T extends { id: number | string }>({ rows, columns }: TableProps<T>) {
+  return (
+    <table>
+      <thead>
+        <tr>
+          {columns.map((column) => (
+            <th key={column.header}>{column.header}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.id}>
+            {columns.map((column) => (
+              <td key={column.header}>{column.render(row)}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+type Order = { id: string; customer: string; total: number };
+declare const orders: Order[];
+
+const view = (
+  <Table
+    rows={orders}
+    columns={[
+      { header: "Customer", render: (order) => order.customer },
+      { header: "Total", render: (order) => `$${order.total.toFixed(2)}` },
+    ]}
+  />
+);
+```
+
+## Limits
+
+- **`React.memo` and `forwardRef` erase generics.** `memo(List)` returns a non-generic
+  component. Either skip `memo`, or cast the result back to the generic signature once.
+- **Complex generic components get hard to read.** If a prop needs three type parameters,
+  consider two simpler components.
+- **`FC<Props<T>>` cannot be generic.** Use a function declaration.
+
+## Common mistakes
+
+- **Using `any` or `unknown` for `items`** and casting inside callbacks.
+- **Over-constraining.** `T extends Product` stops the component working for anything else.
+- **Forgetting the trailing comma** in generic arrow components in `.tsx` files.
+- **Passing the item type separately from the items** so they can drift apart.
+
+## Practice
+
+1. Write `Tabs<T extends string>` taking `tabs: readonly T[]`, `active: T`, `onChange(tab: T)`.
+   Confirm `onChange` receives the literal union and not `string`.
+2. Write `EmptyState<T>` that renders `children` when `items.length > 0`, else a message.
+3. Make `Table` highlight rows with an optional `isSelected: (row: T) => boolean`.

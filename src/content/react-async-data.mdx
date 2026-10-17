@@ -1,0 +1,219 @@
+# Async Data in Components
+
+## What
+
+Data loaded over the network is always in one of a few states. Model them as a
+**discriminated union** and each state carries exactly the fields it should, instead of
+a pile of independently optional ones.
+
+## The problem with three variables
+
+```tsx
+import { useState } from "react";
+
+type User = { id: number; name: string };
+
+function UserListLoose() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [users, setUsers] = useState<User[] | null>(null);
+
+  // loading=true AND users!=null AND error!=null are all representable
+  return <p>{String(loading)} {error} {users?.length}</p>;
+}
+```
+
+Eight combinations of three variables are possible and only three make sense. Every
+render has to guess which one it is in.
+
+## A discriminated union
+
+```ts
+export type AsyncState<T> =
+  | { status: "loading" }
+  | { status: "error"; error: string }
+  | { status: "success"; data: T };
+```
+
+Now `data` exists only on `success`, and `error` only on `error`. Rendering is a switch,
+and the compiler narrows each branch:
+
+```tsx
+type AsyncState<T> =
+  | { status: "loading" }
+  | { status: "error"; error: string }
+  | { status: "success"; data: T };
+
+type User = { id: number; name: string };
+
+function UserListView({ state }: { state: AsyncState<User[]> }) {
+  switch (state.status) {
+    case "loading":
+      return <p>Loading...</p>;
+    case "error":
+      return <p role="alert">{state.error}</p>;
+    case "success":
+      return (
+        <ul>
+          {state.data.map((user) => (
+            <li key={user.id}>{user.name}</li>
+          ))}
+        </ul>
+      );
+  }
+}
+
+function Broken({ state }: { state: AsyncState<User[]> }) {
+  return <p>{state.data.length}</p>; // Error: 'data' does not exist on the loading and error members
+}
+```
+
+## A `useFetch` hook
+
+The hook below returns an `AsyncState<T>`, takes a `parse` function so the response is
+**validated, not asserted**, and cancels stale requests.
+
+```tsx
+import { useEffect, useState } from "react";
+
+export type AsyncState<T> =
+  | { status: "loading" }
+  | { status: "error"; error: string }
+  | { status: "success"; data: T };
+
+type Settled<T> = {
+  url: string;
+  result: Exclude<AsyncState<T>, { status: "loading" }>;
+};
+
+export function useFetch<T>(url: string, parse: (data: unknown) => T): AsyncState<T> {
+  const [settled, setSettled] = useState<Settled<T> | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetch(url, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json() as Promise<unknown>;
+      })
+      .then((json) => setSettled({ url, result: { status: "success", data: parse(json) } }))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return; // a newer request replaced this one
+        const message = error instanceof Error ? error.message : "Unknown error";
+        setSettled({ url, result: { status: "error", error: message } });
+      });
+
+    return () => controller.abort();
+  }, [url, parse]);
+
+  // Derived, not stored: results for another URL are treated as "still loading"
+  return settled !== null && settled.url === url ? settled.result : { status: "loading" };
+}
+```
+
+Three details worth understanding:
+
+1. **`Exclude<AsyncState<T>, { status: "loading" }>`** — the two "finished" members. Only
+   finished results are stored; `loading` is *derived* by comparing `settled.url` with the
+   current `url`. That avoids setting state synchronously inside the effect.
+2. **`response.json() as Promise<unknown>`** — `json()` is `Promise<any>`. Typing it
+   `unknown` forces `parse` to do real work before the data becomes `T`.
+3. **`parse` must be stable.** It is in the dependency array; a function created inside
+   the component changes every render and would refetch forever. Define it at module
+   level.
+
+### Using it
+
+```tsx
+import { useEffect, useState } from "react";
+
+type AsyncState<T> =
+  | { status: "loading" }
+  | { status: "error"; error: string }
+  | { status: "success"; data: T };
+
+declare function useFetch<T>(url: string, parse: (data: unknown) => T): AsyncState<T>;
+
+type User = { id: number; name: string };
+
+function isUser(value: unknown): value is User {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "number" &&
+    "name" in value &&
+    typeof value.name === "string"
+  );
+}
+
+// Defined OUTSIDE the component so its identity is stable
+function parseUsers(data: unknown): User[] {
+  if (!Array.isArray(data) || !data.every(isUser)) {
+    throw new Error("Unexpected response shape");
+  }
+  return data;
+}
+
+function UserList() {
+  const state = useFetch("/api/users", parseUsers); // AsyncState<User[]>
+
+  if (state.status === "loading") return <p>Loading...</p>;
+  if (state.status === "error") return <p role="alert">{state.error}</p>;
+
+  return (
+    <ul>
+      {state.data.map((user) => (
+        <li key={user.id}>{user.name}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+`T` is inferred from `parseUsers`'s return type, so `state.data` is `User[]` with no type
+argument written. If the server sends something else, `parse` throws, and the component
+shows an error rather than crashing later on `undefined`.
+
+## Alternative: Suspense and `use`
+
+React 19's `use` reads a promise during render; loading and error states move into
+`<Suspense>` and error boundaries.
+
+```tsx
+import { use } from "react";
+
+type User = { id: number; name: string };
+
+function UserNames({ usersPromise }: { usersPromise: Promise<User[]> }) {
+  const users = use(usersPromise); // User[] — suspends until resolved
+  return <p>{users.map((user) => user.name).join(", ")}</p>;
+}
+```
+
+Create the promise outside render (in a Server Component, a router loader, or a cache);
+creating it inside render makes a new promise every time.
+
+## Libraries
+
+TanStack Query, SWR and the data APIs of frameworks all return a state of this shape.
+Understanding the union is what lets you read their types — and write the same shape for
+your own state.
+
+## Common mistakes
+
+- **Three separate state variables** for loading, error and data.
+- **`data?: T` on one object** instead of a union.
+- **Trusting `response.json()` as `T`.** Validate with a `parse` function or schema.
+- **Unstable `parse`/callback dependencies** that cause an effect loop.
+- **Not cancelling requests**, so a slow earlier response overwrites a newer one.
+- **A non-exhaustive `switch`.** End with an `assertNever` default for state that may grow.
+
+## Practice
+
+1. Add an `"idle"` state to `AsyncState<T>` and update `UserListView` until it compiles.
+2. Write `useAsyncAction<TArgs, TResult>(action)` returning `{ state, run }`, where `run`
+   takes `TArgs` and `state` is an `AsyncState<TResult>`.
+3. Replace the type guard in `parseUsers` with a `Result<User[], string>` return and
+   make the hook handle it.
