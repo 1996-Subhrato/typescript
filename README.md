@@ -1,100 +1,185 @@
 # TypeScript Reference
 
-A concise, code-first TypeScript documentation site — built as the vehicle for
-learning TypeScript itself.
+A concise, code-first TypeScript documentation site for JavaScript developers, built
+with strict TypeScript and Next.js. Building the site is the practice; the site is the
+reference.
 
-Two things are happening at once:
+![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)
+![React 19](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)
+![TypeScript 5.9 strict](https://img.shields.io/badge/TypeScript-5.9%20strict-3178c6?logo=typescript&logoColor=white)
+![Tailwind CSS 4](https://img.shields.io/badge/Tailwind-4-38bdf8?logo=tailwindcss&logoColor=white)
 
-1. **The content** is a personal TypeScript quick-reference, written for someone who
-   already knows JavaScript, React and Node, and is now working in a TypeScript
-   codebase professionally.
-2. **The site** is a strict TypeScript + Next.js application, so building it is the
-   practice. Concepts are applied in the codebase before or alongside being documented.
+## Overview
 
-This is a learning project, not a production documentation platform. Content quality
-and correctness matter more than visual design.
+Most TypeScript material either re-teaches programming or buries the useful part in
+theory. This project assumes you already write JavaScript, React and Node, and teaches
+TypeScript the way it is used in professional codebases: short pages, realistic
+examples (users, orders, API responses, forms, services), JavaScript → TypeScript
+comparisons, common mistakes, and a practice exercise.
 
-## Stack
+Two things happen at once:
 
-Next.js 16 (App Router, Turbopack) · React 19 · TypeScript 5 (strict+) · Tailwind CSS 4 ·
-MDX via `@next/mdx` · Shiki syntax highlighting via `rehype-pretty-code`.
+1. **The content** is a quick-reference you can revisit mid-task.
+2. **The site** is itself a strict TypeScript + Next.js application, so the concepts are
+   applied in real code (server/client components, recursive types, generics,
+   type-level utilities) rather than only described.
+
+> This is a learning project, not a production documentation platform. Content
+> correctness matters more than visual polish.
+
+## Curriculum
+
+64 topics in nine levels, ordered so nothing depends on a concept taught later. The
+full list is in [`ROADMAP.md`](./ROADMAP.md).
+
+| Level | Topics | Status |
+| ----- | :----: | ------ |
+| TypeScript Fundamentals | 11 | ✅ Complete |
+| Practical TypeScript | 9 | ✅ Complete |
+| Advanced Types | 10 | ⏳ Next |
+| React + TypeScript | 7 | Planned |
+| Node.js + Express | 6 | Planned |
+| Next.js + TypeScript | 5 | Planned |
+| Real-World API Typing | 6 | Planned |
+| TypeScript Configuration | 3 | Planned |
+| Professional TypeScript | 7 | Planned |
+
+**20 of 64 topics published.** Unwritten topics appear greyed out in the sidebar so the
+whole path is visible up front.
+
+## Features
+
+- **Registry-driven navigation**: one typed source of truth for levels, order and status
+- **Sidebar** with active-link highlighting, and a **mobile drawer**
+- **Search palette** (`Ctrl/Cmd + K`) over topic titles and summaries
+- **Table of contents** generated from each page's headings
+- **Previous / next** navigation across the whole learning sequence
+- **Syntax highlighting** via Shiki with light and dark themes, plus a **copy button**
+- **Static generation**: every published topic is prerendered
+- **Verified code samples**: every `ts` block in the docs is compiled by a quality gate
+  (see [Quality checks](#quality-checks))
+
+## Tech stack
+
+| Concern | Choice |
+| ------- | ------ |
+| Framework | Next.js 16 (App Router, Turbopack) |
+| UI | React 19, Tailwind CSS 4 |
+| Language | TypeScript 5.9, strict, no `any` |
+| Content | MDX via `@next/mdx`, `remark-gfm`, `rehype-slug` |
+| Highlighting | Shiki via `rehype-pretty-code` |
 
 ## Getting started
 
-```bash
-npm install
-```
+**Prerequisites:** Node.js 20.9 or later (developed on Node 24) and npm.
 
 ```bash
+git clone <repository-url>
+cd <repository-folder>
+npm install
 npm run dev
 ```
 
 Then open <http://localhost:3000>.
 
-Other commands:
+### Scripts
+
+| Command | What it does |
+| ------- | ------------ |
+| `npm run dev` | Start the development server |
+| `npm run build` | Production build (type-checks and prerenders every topic) |
+| `npm run start` | Serve the production build |
+| `npm run lint` | Run ESLint |
+| `npm run typecheck` | Generate Next's route types, then run `tsc --noEmit` |
+| `npm run check:content` | Compile every code sample in the docs |
+
+> **Why `typecheck` and not plain `tsc`?** `PageProps` and `LayoutProps` are global
+> types that Next.js *generates* from the folder structure. On a fresh clone a bare
+> `tsc --noEmit` fails until they exist; `npm run typecheck` creates them first.
+
+## Quality checks
+
+Before a change is considered done, all of these pass:
 
 ```bash
+npm run typecheck
+npm run lint
+npm run check:content
 npm run build
 ```
 
-```bash
-npx tsc --noEmit
-```
+### Content quality gate
 
-```bash
-npm run check:content
-```
+`npm run check:content` extracts every `ts` fence from `src/content/*.mdx`, compiles each
+as an isolated module under the project's strict flags, and enforces two rules:
 
-`check:content` is the content quality gate: it compiles every `ts` code block in
-`src/content/*.mdx` under the project's strict flags. A line that is meant to fail
-carries a trailing `// Error` comment; the gate fails if a real compiler error is not
-claimed, or a claimed error does not exist. Pass slugs to check only some topics:
-`npm run check:content -- narrowing`.
+- A line that is **meant to fail** carries a trailing `// Error: ...` comment.
+- Every real compiler error must be claimed, and every claim must be a real error.
 
-## How the site is organised
+So the documentation cannot show an error that does not happen, or hide one that does.
+To check selected topics only: `npm run check:content -- narrowing`.
+
+## Project structure
 
 ```text
 src/
-├── app/                     # Routes only, kept thin
-│   ├── page.tsx             # Roadmap index
-│   └── docs/[slug]/page.tsx # Renders one MDX topic
-├── components/              # UI (from Phase 1)
-├── content/                 # MDX lesson bodies, one file per topic slug
+├── app/
+│   ├── layout.tsx               # Root layout, fonts, metadata, header
+│   ├── page.tsx                 # Roadmap index with progress
+│   ├── globals.css              # Prose and code-block styling
+│   └── docs/
+│       ├── layout.tsx           # Sidebar shell for all topic pages
+│       └── [slug]/page.tsx      # Renders one MDX topic, TOC, prev/next
+├── components/                  # SiteHeader, Sidebar, MobileNav, Search,
+│                                # TableOfContents, PrevNextNav, CodeBlock
+├── content/                     # One .mdx file per topic slug
 ├── lib/
-│   ├── registry.ts          # Source of truth: levels, topics, learning order
-│   └── docs.ts              # Derived helpers over the registry
-├── types/docs.ts            # Navigation model types
-└── mdx-components.tsx       # Global MDX component overrides
+│   ├── registry.ts              # Source of truth: levels, topics, order, status
+│   ├── docs.ts                  # Derived helpers (safe for client components)
+│   └── toc.ts                   # Heading parser (server-only)
+├── types/docs.ts                # Navigation model types
+└── mdx-components.tsx           # Global MDX overrides
 scripts/
-└── check-content.mts        # Compiles the code blocks in every topic
+└── check-content.mts            # Content quality gate
 ```
 
-**Content is separated from UI.** `src/lib/registry.ts` declares *what topics exist and
-in what order*; `src/content/*.mdx` holds the prose; `src/app` and `src/components`
-only render. Adding a topic means adding an MDX file and flipping its registry entry
-from `"planned"` to `"published"`.
+**Content is separate from UI.** The registry decides *what exists and in what order*;
+`src/content` holds the prose; `app` and `components` only render. Dependencies flow one
+way: `app` → `components` → `lib` → `types`.
 
-**Layering rule:** `app/` → `lib/` → `types/`, never the reverse.
+## Adding a topic
 
-## Writing conventions for topic pages
+1. Create `src/content/<slug>.mdx`. The slug must match the registry entry.
+2. Run `npm run check:content -- <slug>` and fix anything it reports.
+3. In `src/lib/registry.ts`, change that topic's `status` from `"planned"` to
+   `"published"`.
+4. Run the [quality checks](#quality-checks).
 
-Short, practical, code-focused, scannable. A typical page covers *what* it is, *why*
-it exists, syntax, a realistic example, real-world usage, a common mistake, and a
-practice exercise — but only the sections that earn their place.
+The sidebar, search, table of contents, previous/next links and static generation all
+derive from the registry, so nothing else needs editing.
 
-Examples use realistic domains (users, products, orders, API responses, auth, forms,
-controllers, components), never `let x: string = "hello"`.
+### Writing conventions
 
-## Project rules
+- Short, practical, scannable: *what*, *why*, syntax, a realistic example, common
+  mistakes, a practice exercise. Only sections that earn their place.
+- Realistic domains, never `let x: string = "hello"`.
+- Practice exercises never ship with solutions.
+- Code blocks must be **self-contained** (declare the types they use) so the quality
+  gate can compile them. Use ` ```js ` for JavaScript, which is not compiled.
 
-- Everything is `.ts` / `.tsx`. No JavaScript source files.
-- No `any`. If a value's type is genuinely unknown, use `unknown` and narrow it.
-- Strictness is never relaxed to silence an error — the error gets understood and fixed.
+## Engineering rules
 
-## Progress
+- **Everything is TypeScript.** `.ts` / `.tsx` (or `.mts` for scripts); no JavaScript
+  source files.
+- **No `any`.** Use `unknown` and narrow.
+- **Strictness is never relaxed to silence an error.** The error is understood and fixed.
+  The config goes beyond `strict`: `noUncheckedIndexedAccess`, `noImplicitOverride`,
+  `noFallthroughCasesInSwitch`, `noUnusedLocals`, `noUnusedParameters`,
+  `verbatimModuleSyntax`.
+- **Prove, don't assert.** Prefer narrowing over `as` and `!`.
 
-Development runs in phases. Current state, decisions, blockers and the exact next task
-live in [`LEARNING_PROGRESS.md`](./LEARNING_PROGRESS.md) — **read that first** when
-resuming work.
+## Project state
 
-The full topic list is in [`ROADMAP.md`](./ROADMAP.md).
+Development is phased. Current phase, architectural
+decisions, known issues and the exact next task live in
+[`LEARNING_PROGRESS.md`](./LEARNING_PROGRESS.md).
