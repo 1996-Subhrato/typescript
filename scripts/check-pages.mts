@@ -13,6 +13,8 @@
  */
 import { readdirSync } from "node:fs";
 import path from "node:path";
+import { readFileSync } from "node:fs";
+import { extractExercises } from "../src/lib/exercises-parse.ts";
 import { parseSearchIndex, search } from "../src/lib/search.ts";
 
 const BASE_URL = process.env["BASE_URL"] ?? "http://localhost:3000";
@@ -132,5 +134,40 @@ async function checkSearchIndex(): Promise<number> {
   return failed;
 }
 
+/**
+ * The exercises page lists every topic's Practice exercises with a checkbox each. The number of
+ * checkboxes in the HTML must equal the number the parser finds in the MDX sources, and every
+ * topic must have a link back to its Practice section.
+ */
+async function checkExercisesPage(): Promise<number> {
+  const response = await fetch(`${BASE_URL}/exercises`);
+  const html = await response.text();
+
+  const expected = [...knownSlugs].reduce(
+    (total, slug) => total + extractExercises(readFileSync(path.join(CONTENT_DIR, `${slug}.mdx`), "utf8")).length,
+    0,
+  );
+  const rendered = (html.match(/aria-label="Mark this exercise as done"/g) ?? []).length;
+  const topicLinks = new Set(matchAll(html, /href="\/docs\/([a-z0-9-]+)#practice"/g));
+  const missingTopics = [...knownSlugs].filter((slug) => !topicLinks.has(slug));
+
+  let failed = 0;
+  if (!response.ok) {
+    failed += 1;
+    console.log(`FAIL /exercises: http=${response.status}`);
+  }
+  if (rendered !== expected) {
+    failed += 1;
+    console.log(`FAIL /exercises renders ${rendered} exercises but the sources contain ${expected}`);
+  }
+  if (missingTopics.length > 0) {
+    failed += 1;
+    console.log(`FAIL /exercises has no link for: ${missingTopics.join(", ")}`);
+  }
+  if (failed === 0) console.log(`EXERCISES OK (${rendered} exercises across ${knownSlugs.size} topics)`);
+  return failed;
+}
+
 const searchFailures = requested.length === 0 ? await checkSearchIndex() : 0;
-process.exitCode = failures === 0 && searchFailures === 0 ? 0 : 1;
+const exerciseFailures = requested.length === 0 ? await checkExercisesPage() : 0;
+process.exitCode = failures === 0 && searchFailures === 0 && exerciseFailures === 0 ? 0 : 1;

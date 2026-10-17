@@ -15,6 +15,14 @@ export default function RoadmapPage() {
         and framed as a JavaScript &rarr; TypeScript comparison where that helps.
       </p>
 
+      <p className="mt-4 text-sm text-neutral-600 dark:text-neutral-400">
+        Ready to practise? The{" "}
+        <Link href="/exercises" className="text-blue-600 underline underline-offset-2 dark:text-blue-400">
+          exercises page
+        </Link>{" "}
+        collects every Practice section in one place, with a progress tracker.
+      </p>
+
       <div className="mt-8">
         <div className="flex items-baseline justify-between text-sm">
           <span className="text-neutral-500">

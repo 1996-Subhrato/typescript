@@ -16,6 +16,11 @@ export function SiteHeader() {
         <Link href="/" className="text-sm font-semibold tracking-tight">
           TypeScript Reference
         </Link>
+        <nav aria-label="Site" className="ml-2 hidden items-center gap-4 text-sm text-neutral-600 sm:flex dark:text-neutral-400">
+          <Link href="/exercises" className="hover:text-neutral-950 dark:hover:text-white">
+            Exercises
+          </Link>
+        </nav>
         <div className="ml-auto flex items-center gap-3">
           <Search />
           <MobileNav />

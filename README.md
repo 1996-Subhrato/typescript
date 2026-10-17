@@ -55,6 +55,8 @@ a topic as planned, in which case it appears greyed out so the whole path stays 
   `keyof` and error codes like `TS2345`; results jump to the matching section
 - **Table of contents** generated from each page's headings
 - **Previous / next** navigation across the whole learning sequence
+- **Exercises page** collecting every Practice exercise (165 of them), with a progress tracker saved in
+  the browser. There are no solutions, by design
 - **Syntax highlighting** via Shiki with light and dark themes, plus a **copy button**
 - **Static generation**: every published topic is prerendered
 - **Verified code samples**: every `ts` block in the docs is compiled by a quality gate
