@@ -80,11 +80,11 @@ Type-level programming: transforming types instead of values.
 
 Taught using this repository as the worked example.
 
-1. **Pages, Layouts & Route Params** — `PageProps`, `LayoutProps`, async `params`
-2. **Server & Client Components** — what may cross the boundary, and what types enforce
-3. **Route Handlers** — typed API endpoints in the App Router
-4. **Server Actions & Forms** — typed mutations and form state
-5. **Typed Configuration** — `next.config.ts`, metadata, generated route types
+1. **Pages, Layouts & Route Params** — `PageProps`, `LayoutProps`, async `params` ✅
+2. **Server & Client Components** — what may cross the boundary, and what types enforce ✅
+3. **Route Handlers** — typed API endpoints in the App Router ✅
+4. **Server Actions & Forms** — typed mutations and form state ✅
+5. **Typed Configuration** — `next.config.ts`, metadata, generated route types ✅
 
 ## Level 4d — Real-World API Typing · *Phase 8* · 6 topics
 

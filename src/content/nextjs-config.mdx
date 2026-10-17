@@ -1,0 +1,223 @@
+# Typed Configuration
+
+## What
+
+Next.js is configured through typed values: `next.config.ts`, `Metadata`, `Viewport`,
+`tsconfig.json`, and environment variables. Most of this is a matter of annotating with the
+right type and letting the compiler catch the typo.
+
+## `next.config.ts`
+
+```ts title="next.config.ts"
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  reactStrictMode: true,
+  images: {
+    remotePatterns: [{ protocol: "https", hostname: "cdn.example.com" }],
+  },
+  typedRoutes: true,
+};
+
+export default nextConfig;
+```
+
+`NextConfig` types every option. A misspelt key or a wrong value fails to compile:
+
+```ts
+import type { NextConfig } from "next";
+
+const wrongValue: NextConfig = { reactStrictMode: "yes" }; // Error: 'string' is not assignable to 'boolean | undefined'
+
+const wrongKey: NextConfig = { pagesExtensions: ["ts", "tsx"] }; // Error: 'pagesExtensions' does not exist (did you mean 'pageExtensions'?)
+
+export { wrongValue, wrongKey };
+```
+
+### This site's own configuration
+
+The config for this very project wraps the base config with the MDX plugin. Each helper
+takes and returns a `NextConfig`, so the result is still checked:
+
+```ts
+import createMDX from "@next/mdx";
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  // MDX files live in src/content and are imported dynamically; they must never become routes
+  pageExtensions: ["ts", "tsx"],
+};
+
+const withMDX = createMDX({
+  options: {
+    remarkPlugins: ["remark-gfm"],
+    rehypePlugins: ["rehype-slug"],
+  },
+});
+
+export default withMDX(nextConfig);
+```
+
+The plugin names are strings, not imported functions, because Turbopack cannot receive
+functions in config (a decision recorded when this site was set up).
+
+### A function form, by phase
+
+The default export can be a function of the current build phase:
+
+```ts
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
+import type { NextConfig } from "next";
+
+export default function config(phase: string): NextConfig {
+  if (phase === PHASE_DEVELOPMENT_SERVER) {
+    return { reactStrictMode: true };
+  }
+  return { reactStrictMode: true, poweredByHeader: false };
+}
+```
+
+## Metadata and viewport
+
+`Metadata` describes the `<head>`. Export it as a constant for static pages, or from
+`generateMetadata` for dynamic ones (*Pages, Layouts & Route Params*).
+
+```ts title="app/layout.tsx"
+import type { Metadata, Viewport } from "next";
+
+export const metadata: Metadata = {
+  title: {
+    default: "TypeScript Reference",
+    template: "%s | TypeScript Reference", // child pages: "Narrowing | TypeScript Reference"
+  },
+  description: "A concise, code-first TypeScript reference.",
+  metadataBase: new URL("https://example.com"),
+  openGraph: { type: "website", siteName: "TypeScript Reference" },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+```
+
+Both exports work only in Server Components, and you cannot export `metadata` and
+`generateMetadata` from the same segment.
+
+## Typed links
+
+Set `typedRoutes: true` (shown in the first example) and Next.js generates a union of every
+valid route in the project. According to the docs, a literal `href` that is not a real route
+then fails to compile, which catches broken internal links:
+
+{/* check:skip */}
+```tsx
+import Link from "next/link";
+
+export function Nav() {
+  return (
+    <>
+      <Link href="/docs/narrowing">Narrowing</Link>
+      <Link href="/docs/narowing">Typo</Link> {/* Error with typedRoutes: not a known route */}
+    </>
+  );
+}
+```
+
+For a string you build yourself, cast to `Route`:
+
+```tsx
+import type { Route } from "next";
+
+declare function navigate(href: Route): void;
+
+export function goToTopic(slug: string): void {
+  navigate(`/docs/${slug}` as Route);
+}
+```
+
+(The first block above depends on routes Next.js generates from the app directory, so it
+cannot be checked standalone, like `PageProps`.)
+
+## Environment variables
+
+Next.js decides what reaches the browser: only variables starting with `NEXT_PUBLIC_`, and
+those are **inlined at build time**, but only where the code reads them literally.
+
+```ts
+const direct = process.env.NEXT_PUBLIC_API_URL; // inlined into the browser bundle
+
+const name = "NEXT_PUBLIC_API_URL";
+const dynamic = process.env[name]; // NOT inlined: undefined in the browser
+```
+
+That rule shapes how you build a typed config. The server-side object from *Environment &
+Config* can parse the whole of `process.env`. The browser-visible object must list each
+variable by its literal name:
+
+```ts
+import { z } from "zod";
+
+const PublicEnvSchema = z.object({
+  NEXT_PUBLIC_API_URL: z.url(),
+  NEXT_PUBLIC_ANALYTICS_ID: z.string().optional(),
+});
+
+// Each property is a literal `process.env.NAME` read, so each one is inlined
+export const publicEnv = PublicEnvSchema.parse({
+  NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+  NEXT_PUBLIC_ANALYTICS_ID: process.env.NEXT_PUBLIC_ANALYTICS_ID,
+});
+
+const url: string = publicEnv.NEXT_PUBLIC_API_URL;
+```
+
+Parsing `process.env` itself in a Client Component would fail in the browser, because the
+values were never inlined. Keep two modules — `serverEnv` (imports `server-only`) and
+`publicEnv` — so a secret cannot be imported into client code by accident.
+
+## `tsconfig.json` in a Next.js project
+
+The relevant pieces, all present in this repository:
+
+```jsonc
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true, // Next compiles; tsc only type-checks
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "plugins": [{ "name": "next" }], // editor support for Next.js conventions
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"]
+}
+```
+
+- **`plugins: [{ "name": "next" }]`** is a language-service plugin: it improves the editor but
+  does not change `tsc`.
+- **`include` must cover `.next/types`**, where `PageProps`, `LayoutProps`, `RouteContext`
+  and typed routes are generated.
+- **`next-env.d.ts`** is generated and should be git-ignored; do not edit it.
+- **`npm run typecheck`** in this repo is `next typegen && tsc --noEmit`. Generate first,
+  then check.
+
+*TypeScript Configuration* explains each of these options in depth.
+
+## Common mistakes
+
+- **Reading `process.env[name]` for a public variable** in client code.
+- **Parsing all of `process.env` in a Client Component.**
+- **Casting config as `NextConfig`** instead of annotating. A cast hides unknown keys.
+- **Leaving `.next/types` out of `include`**, so generated helpers vanish in CI.
+- **Importing a server-only env object** into a Client Component.
+- **Committing `next-env.d.ts`.**
+
+## Practice
+
+1. Add `images.remotePatterns` for a CDN to a typed `NextConfig` and break it on purpose to
+   read the error.
+2. Write `serverEnv` and `publicEnv` modules for `DATABASE_URL` (server) and
+   `NEXT_PUBLIC_SITE_URL` (public). Which one imports `server-only`, and why?
+3. Enable `typedRoutes`, run `next typegen`, and find the generated `Route` type under
+   `.next/types`.

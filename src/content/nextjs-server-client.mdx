@@ -1,0 +1,207 @@
+# Server & Client Components
+
+## What
+
+In the App Router every component is a **Server Component** by default. It renders on the
+server, can be `async`, can read databases and secrets, and ships no JavaScript to the
+browser. Adding `"use client"` at the top of a file makes it a **Client Component**:
+it also renders on the server first, then hydrates in the browser, and can use state,
+effects and event handlers.
+
+| | Server Component | Client Component |
+| --- | :---: | :---: |
+| `async` / `await` in the component | yes | no |
+| Reads the database, env secrets, filesystem | yes | no |
+| `useState`, `useEffect`, event handlers | no | yes |
+| Browser APIs (`window`, `localStorage`) | no | yes |
+| JavaScript sent to the browser | none | yes |
+
+## This site, as the example
+
+| File | Kind | Why |
+| ---- | ---- | --- |
+| `SiteHeader` | server | Static markup; renders two client components |
+| `Sidebar` | **client** | Calls `usePathname` (a hook) to highlight the active link |
+| `PrevNextNav` | server | Pure rendering from props |
+| `TableOfContents`, `Search`, `CodeBlock` | **client** | State, effects, event handlers |
+| `lib/docs.ts` | shared | Plain functions; safe on both sides |
+| `lib/toc.ts` | **server only** | Imports `node:fs` |
+
+```tsx title="Sidebar.tsx (simplified)"
+"use client";
+
+import { usePathname } from "next/navigation";
+
+type SidebarProps = { links: readonly { href: string; label: string }[] };
+
+export function Sidebar({ links }: SidebarProps) {
+  const pathname = usePathname();
+
+  return (
+    <nav>
+      {links.map((link) => (
+        <a key={link.href} href={link.href} aria-current={link.href === pathname ? "page" : undefined}>
+          {link.label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+```
+
+## What can cross the boundary
+
+When a Server Component renders a Client Component, its **props are serialised** and
+sent over the wire. Anything that cannot be serialised cannot be a prop: ordinary functions,
+class instances with methods, and so on.
+
+TypeScript does **not** enforce this. A function-typed prop compiles; the failure arrives
+later, from React, at build or request time. You can move the check into the type system
+with a `Serializable` type — the same recursive shape as `Json` from *Recursive Types*:
+
+```tsx
+type Serializable =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | readonly Serializable[]
+  | { readonly [key: string]: Serializable };
+
+type ClientProps<T extends Serializable> = T;
+
+type LikeButtonProps = ClientProps<{ postId: string; initialLikes: number }>;
+
+type BadProps = ClientProps<{ onLike: () => void }>; // Error: a function is not Serializable
+
+function LikeButton({ postId, initialLikes }: LikeButtonProps) {
+  return <button data-post={postId}>{initialLikes}</button>;
+}
+```
+
+(This is deliberately conservative. React can also serialise `Date`, `Map`, `Set` and
+Promises; extend the union if you rely on them. Server Actions are the sanctioned way to
+pass a function — see *Server Actions & Forms*.)
+
+An `interface` does not satisfy the index-signature form; use a `type` alias for client
+props you want to check this way:
+
+```tsx
+type Serializable =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | readonly Serializable[]
+  | { readonly [key: string]: Serializable };
+
+type ClientProps<T extends Serializable> = T;
+
+interface CardProps {
+  title: string;
+}
+
+type Checked = ClientProps<CardProps>; // Error: interfaces have no implicit index signature
+```
+
+## Composition: server content inside a client shell
+
+A Client Component cannot import a Server Component and have it stay on the server: the
+import pulls it into the client bundle. It can, however, **receive one as `children`**,
+which is rendered on the server and handed over as finished output.
+
+```tsx
+"use client";
+
+import { useState } from "react";
+import type { ReactNode } from "react";
+
+export function Collapsible({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <section>
+      <button onClick={() => setOpen((value) => !value)}>{title}</button>
+      {open && children}
+    </section>
+  );
+}
+```
+
+```tsx
+import type { ReactNode } from "react";
+
+declare function Collapsible(props: { title: string; children: ReactNode }): ReactNode;
+declare function loadOrders(): Promise<{ id: string; total: number }[]>;
+
+// A Server Component: it fetches, and the client shell only toggles visibility
+export default async function OrdersPage() {
+  const orders = await loadOrders();
+
+  return (
+    <Collapsible title="Recent orders">
+      <ul>
+        {orders.map((order) => (
+          <li key={order.id}>{order.total}</li>
+        ))}
+      </ul>
+    </Collapsible>
+  );
+}
+```
+
+The expensive data stays server-side; only the toggle ships JavaScript.
+
+## Keep the client boundary small
+
+`"use client"` marks a **boundary**: that file and everything it imports join the client
+bundle. Push it down to the leaves — a button, a search box — rather than marking whole
+pages. This is why `lib/toc.ts`, which reads files, is a separate module from
+`lib/docs.ts`, which the client `Sidebar` imports: one stray import of `node:fs` into a
+client module breaks the build.
+
+## Guarding server-only code
+
+Because shared modules can be imported from either side, mark modules that must never reach
+the browser:
+
+```ts
+import "server-only"; // build error if a Client Component imports this module
+
+declare const database: { query(sql: string): Promise<unknown[]> };
+
+export async function listUsers(): Promise<unknown[]> {
+  return database.query("SELECT * FROM users");
+}
+```
+
+`server-only` is a runtime/build guard (a tiny package), not a type. Install it with
+`npm install server-only`. `client-only` is the reverse.
+
+## Context and hooks
+
+- **Context providers must be Client Components**, but they can wrap server content through
+  `children` (see *useRef & useContext*).
+- **Hooks run only in Client Components.** Using `useState` in a Server Component fails at
+  build time with a framework error. The type checker will not warn you — the boundary is
+  enforced by the bundler, not by TypeScript.
+- **Browser APIs** such as `window` and `localStorage` also belong on the client, which is
+  the caution on `useLocalStorage` in *Custom Hooks*.
+
+## Common mistakes
+
+- **Putting `"use client"` on a page** to make an error go away. Push it down to the
+  component that needs the hook.
+- **Passing a function prop** from a Server Component to a Client Component.
+- **Importing a server-only module** (database, `fs`, secrets) from a client file.
+- **Assuming TypeScript will flag a missing `"use client"`.** It will not.
+- **`async` Client Components.** Not supported; load data on the server and pass it down.
+
+## Practice
+
+1. Take a page that fetches data and renders a "Like" button. Split it into a Server
+   Component and a minimal `LikeButton` Client Component. What are the button's props?
+2. Add a function-typed field to `LikeButtonProps` and watch `ClientProps` reject it.
+3. Why can `Sidebar` import from `lib/docs.ts` but not from `lib/toc.ts`?

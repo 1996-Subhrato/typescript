@@ -1,0 +1,240 @@
+# Server Actions & Forms
+
+## What
+
+A **Server Function** is an `async` function that runs on the server but can be called from
+the browser. Used for data changes (a form submit, a button), it is called a **Server
+Action**. You mark it with the `"use server"` directive, and React wires the network call.
+
+The typing job is to describe what goes in (a `FormData`, or arguments) and what state
+comes back.
+
+## The simplest action
+
+```ts title="app/subscribe/actions.ts"
+"use server";
+
+export async function subscribe(formData: FormData): Promise<void> {
+  const email = formData.get("email"); // FormDataEntryValue | null
+  if (typeof email !== "string") return;
+
+  console.log("Subscribing", email.toLowerCase());
+}
+```
+
+```tsx
+declare function subscribe(formData: FormData): Promise<void>;
+
+export default function SubscribeForm() {
+  return (
+    <form action={subscribe}>
+      <input name="email" type="email" />
+      <button type="submit">Join</button>
+    </form>
+  );
+}
+```
+
+When a function is passed to `<form action>`, React hands it the form's `FormData`.
+`FormData.get` returns `string | File | null`, so narrow it. Server Functions can be defined
+inline in Server Components, or in a file marked `"use server"` that Client Components
+import. They cannot be defined inside a Client Component.
+
+## Return typed state
+
+Returning `void` tells the user nothing. Return a value that describes the outcome, as a
+discriminated union (*Discriminated Unions*):
+
+```ts
+export type SignupState =
+  | { status: "idle" }
+  | { status: "error"; fieldErrors: { email?: string[]; password?: string[] } }
+  | { status: "success"; userId: number };
+```
+
+Keep this type in its own file (say `state.ts`) and import it with `import type` from both
+the action and the form, so a file marked `"use server"` only exports functions.
+
+## Validate with a schema
+
+Never trust the form. Parse it, and turn failures into state.
+
+```ts title="app/signup/actions.ts"
+"use server";
+
+import { z } from "zod";
+
+type SignupState =
+  | { status: "idle" }
+  | { status: "error"; fieldErrors: { email?: string[]; password?: string[] } }
+  | { status: "success"; userId: number };
+
+const SignupSchema = z.object({
+  email: z.email(),
+  password: z.string().min(8),
+});
+
+export async function signup(_previous: SignupState, formData: FormData): Promise<SignupState> {
+  const parsed = SignupSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    return { status: "error", fieldErrors: z.flattenError(parsed.error).fieldErrors };
+  }
+
+  // ... create the user with parsed.data.email / parsed.data.password
+  return { status: "success", userId: 1 };
+}
+```
+
+Once an action is used with `useActionState`, its signature gains a **first** parameter:
+the previous state. The `_previous` name signals it is unused here.
+
+## The form: `useActionState`
+
+`useActionState` runs the action, stores what it returns, and reports whether it is pending.
+Its types are inferred from the action.
+
+```tsx title="app/signup/form.tsx"
+"use client";
+
+import { useActionState } from "react";
+
+type SignupState =
+  | { status: "idle" }
+  | { status: "error"; fieldErrors: { email?: string[]; password?: string[] } }
+  | { status: "success"; userId: number };
+
+declare function signup(previous: SignupState, formData: FormData): Promise<SignupState>;
+
+const initialState: SignupState = { status: "idle" };
+
+export function SignupForm() {
+  const [state, formAction, pending] = useActionState(signup, initialState);
+
+  return (
+    <form action={formAction}>
+      <input name="email" type="email" />
+      {state.status === "error" && state.fieldErrors.email?.map((message) => <p key={message}>{message}</p>)}
+
+      <input name="password" type="password" />
+
+      <button type="submit" disabled={pending}>
+        {pending ? "Creating..." : "Sign up"}
+      </button>
+
+      {state.status === "success" && <p>Welcome, user {state.userId}</p>}
+    </form>
+  );
+}
+```
+
+Read the tuple: `state` is a `SignupState`, narrowed by `state.status`; `formAction` goes in
+`<form action>`; `pending` is a `boolean`.
+
+The types flow from the **action**. `state` is the whole union because the action's return
+type says so, not because of the initial value, and the initial value is itself checked
+against it:
+
+```tsx
+import { useActionState } from "react";
+
+type State = { status: "idle" } | { status: "done"; id: number };
+
+declare function create(previous: State, formData: FormData): Promise<State>;
+
+export function Form() {
+  const [state] = useActionState(create, { status: "idle" });
+  const id: number = state.id; // Error: 'id' does not exist on the idle member
+
+  const [other] = useActionState(create, { status: "bogus" }); // Error: '"bogus"' is not assignable to '"idle" | "done"'
+
+  return <p>{id}{String(other)}</p>;
+}
+```
+
+The first error is the useful one: until you check `state.status`, TypeScript refuses to
+let you read `id`.
+
+## Extra arguments with `bind`
+
+To pass something that is not in the form, such as the id being edited, bind it:
+
+```ts
+async function updateUser(userId: number, formData: FormData): Promise<void> {
+  console.log(userId, formData.get("name"));
+}
+
+const updateUserOne = updateUser.bind(null, 1); // (formData: FormData) => Promise<void>
+
+updateUserOne(new FormData());
+updateUser.bind(null, "1"); // Error: 'string' is not assignable to 'number'
+```
+
+`bind` preserves the remaining parameter types (this works because of `strictBindCallApply`,
+part of `strict`).
+
+## Actions are public endpoints
+
+This is the most important thing to understand about their types:
+
+- A Server Action compiles to an HTTP endpoint anyone can call with any payload.
+- The parameter types describe what **your** forms send. They are erased at runtime and
+  enforce nothing about what a hostile or buggy client sends.
+
+So treat every argument as untrusted `unknown`, even when typed:
+
+```ts
+"use server";
+
+export async function deleteProduct(productId: unknown): Promise<{ ok: boolean }> {
+  if (typeof productId !== "number" || !Number.isInteger(productId)) {
+    return { ok: false };
+  }
+  // Check that the CURRENT USER may delete this product before doing it.
+  return { ok: true };
+}
+```
+
+Also **authorise** inside the action. Hiding a button is not access control.
+
+## Redirecting and revalidating
+
+After a mutation you typically refresh cached data or navigate.
+
+```ts
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+
+export async function createPost(formData: FormData): Promise<void> {
+  const title = formData.get("title");
+  if (typeof title !== "string" || title.length === 0) return;
+
+  // ... save the post
+  revalidatePath("/posts");
+  redirect("/posts"); // returns `never`: nothing after this line runs
+}
+```
+
+`redirect` is typed `never`. It works by throwing, so do not call it inside a `try/catch`
+that swallows the exception.
+
+## Common mistakes
+
+- **Trusting parameter types** as validation.
+- **Missing the extra first parameter** when switching an action to `useActionState`.
+- **Defining an action inside a Client Component.** Import it from a `"use server"` file.
+- **Typing the previous state as `any`.** Use the state union.
+- **Forgetting to authorise.** Every action is reachable by URL.
+- **Wrapping `redirect()` in `try/catch`.**
+- **Exporting non-function values** (constants, schemas) from a `"use server"` file.
+
+## Practice
+
+1. Add a `"rate-limited"` member to `SignupState` and handle it in `SignupForm`. Let the
+   compiler tell you where.
+2. Write `addComment(postId: number, previous: CommentState, formData: FormData)` and bind
+   `postId` before passing it to `useActionState`.
+3. Turn `deleteProduct` into a function that takes `FormData`, validates the id with Zod,
+   and returns a `Result`-like state.

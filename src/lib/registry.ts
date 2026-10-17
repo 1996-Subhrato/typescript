@@ -104,11 +104,11 @@ export const levels = [
     summary: "App Router typing, using this very site as the example.",
     difficulty: "intermediate",
     topics: [
-      { slug: "nextjs-pages-layouts", title: "Pages, Layouts and Route Params", summary: "PageProps, LayoutProps, and async params.", status: "planned" },
-      { slug: "nextjs-server-client", title: "Server and Client Components", summary: "What crosses the boundary, and what the types enforce.", status: "planned" },
-      { slug: "nextjs-route-handlers", title: "Route Handlers", summary: "Typed API endpoints in the App Router.", status: "planned" },
-      { slug: "nextjs-server-actions", title: "Server Actions and Forms", summary: "Typed mutations and form state.", status: "planned" },
-      { slug: "nextjs-config", title: "Typed Configuration", summary: "next.config.ts, metadata, and generated route types.", status: "planned" },
+      { slug: "nextjs-pages-layouts", title: "Pages, Layouts and Route Params", summary: "PageProps, LayoutProps, and async params.", status: "published" },
+      { slug: "nextjs-server-client", title: "Server and Client Components", summary: "What crosses the boundary, and what the types enforce.", status: "published" },
+      { slug: "nextjs-route-handlers", title: "Route Handlers", summary: "Typed API endpoints in the App Router.", status: "published" },
+      { slug: "nextjs-server-actions", title: "Server Actions and Forms", summary: "Typed mutations and form state.", status: "published" },
+      { slug: "nextjs-config", title: "Typed Configuration", summary: "next.config.ts, metadata, and generated route types.", status: "published" },
     ],
   },
   {
