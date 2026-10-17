@@ -1,0 +1,179 @@
+# Environment & Config
+
+## What
+
+Environment variables are the textbook untrusted input: configured outside your code,
+read as text, and wrong in ways you only discover when the app is already running.
+Typing them well means **checking them once, at startup, and exporting a typed object**.
+
+## What `process.env` gives you
+
+```ts
+const port = process.env.PORT; // string | undefined
+const url = process.env.DATABASE_URL; // string | undefined
+
+const portNumber: number = process.env.PORT; // Error: 'string | undefined' is not assignable to 'number'
+```
+
+Every variable is `string | undefined`. That is accurate: variables can be missing, and they
+are always text. The type will not tell you which names exist (a typo like
+`process.env.DATABSE_URL` is just another `string | undefined`).
+
+## The naive approach
+
+```ts
+const config = {
+  port: Number(process.env.PORT), // NaN if PORT is missing
+  databaseUrl: process.env.DATABASE_URL as string, // a lie if it is missing
+};
+```
+
+This compiles. If `PORT` is unset, `port` is `NaN`; if `DATABASE_URL` is unset the cast
+hides it, and the failure arrives later as a confusing connection error.
+
+## A required-variable helper
+
+```ts
+export function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (value === undefined || value === "") {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+export function numberEnv(name: string, fallback?: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") {
+    if (fallback !== undefined) return fallback;
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Environment variable ${name} must be a number, got "${raw}"`);
+  }
+  return parsed;
+}
+
+export const config = {
+  port: numberEnv("PORT", 3000),
+  databaseUrl: requireEnv("DATABASE_URL"),
+} as const;
+```
+
+The app crashes **immediately at boot** with a precise message, instead of failing
+mysteriously at the first request that needs the value. Failing loudly and early is the
+goal.
+
+## A schema for the whole environment
+
+For anything beyond a few variables, validate the entire environment with a schema, the same
+idea as *DTOs & Runtime Validation*.
+
+```ts
+import { z } from "zod";
+
+const EnvSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  PORT: z.coerce.number().int().positive().default(3000),
+  DATABASE_URL: z.url(),
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  ENABLE_METRICS: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+});
+
+export type Env = z.infer<typeof EnvSchema>;
+
+export const env: Env = EnvSchema.parse(process.env);
+
+const port: number = env.PORT; // number, not string | undefined
+const metrics: boolean = env.ENABLE_METRICS; // boolean, converted from "true" / "false"
+const level = env.LOG_LEVEL; // "debug" | "info" | "warn" | "error"
+env.DATABSE_URL; // Error: Property 'DATABSE_URL' does not exist on type
+```
+
+What you gain:
+
+- **One place** reads `process.env`. The rest of the code imports `env`.
+- **Real types**: a number, a boolean, a union of literal levels.
+- **A typo is now a compile error** in the rest of the program.
+- **Boot fails with a list of every problem**, not just the first.
+
+`parse` throws a `ZodError` if anything is wrong. Let it crash at startup.
+
+> Booleans from the environment are strings. `Boolean("false")` is `true`. Always parse
+> them explicitly, as above.
+
+## Config objects: derive, then freeze
+
+Group related settings and keep them immutable.
+
+```ts
+type Env = {
+  PORT: number;
+  DATABASE_URL: string;
+  JWT_SECRET: string;
+};
+
+declare const env: Env;
+
+export const config = {
+  server: { port: env.PORT },
+  database: { url: env.DATABASE_URL },
+  auth: { jwtSecret: env.JWT_SECRET, tokenTtlSeconds: 3600 },
+} as const satisfies { server: object; database: object; auth: object };
+
+config.server.port = 8080; // Error: Cannot assign to 'port' because it is a read-only property
+```
+
+`as const` makes every property `readonly` with literal types, and `satisfies` checks the
+structure without widening it.
+
+## Augmenting `ProcessEnv`: handle with care
+
+You can declare which names exist:
+
+```ts
+declare global {
+  namespace NodeJS {
+    interface ProcessEnv {
+      DATABASE_URL: string;
+      PORT?: string;
+    }
+  }
+}
+
+const url: string = process.env.DATABASE_URL; // compiles
+```
+
+This gives autocomplete, but it is an **unchecked promise**: `DATABASE_URL: string` tells
+the compiler the variable is always there. If it is missing, you get `undefined` typed as
+`string`. Prefer the validated `env` object; if you do augment, keep every entry
+`string | undefined`-honest.
+
+## Secrets and public values
+
+Frameworks decide which variables are exposed to the browser (Next.js, for example, only
+inlines names starting with `NEXT_PUBLIC_`). Keep browser-visible config in a separate
+validated object from server secrets, so a secret cannot be imported into client code by
+accident.
+
+## Common mistakes
+
+- **`process.env.X as string`.** It silences the check that matters most.
+- **Reading `process.env` all over the codebase.** Read it once.
+- **`Number(process.env.PORT)` without checking** for `NaN`.
+- **Treating `"false"` as falsy.** Parse booleans explicitly.
+- **Logging the whole environment** on failure, which can print secrets.
+- **Validating lazily**, so the app starts and fails later.
+
+## Practice
+
+1. Write `EnvSchema` for `API_BASE_URL` (a URL), `CACHE_TTL_SECONDS` (default 60),
+   and `FEATURE_FLAGS` (comma-separated, transformed into `string[]`).
+2. Write `requireEnv` as a generic over a union of names so that a typo in the argument
+   is a compile error.
+3. Separate a `serverEnv` and a `publicEnv` so that a client file importing `serverEnv`
+   is an obvious mistake.

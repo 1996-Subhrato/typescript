@@ -38,13 +38,13 @@ full list is in [`ROADMAP.md`](./ROADMAP.md).
 | Practical TypeScript | 9 | ✅ Complete |
 | Advanced Types | 10 | ✅ Complete |
 | React + TypeScript | 7 | ✅ Complete |
-| Node.js + Express | 6 | ⏳ Next |
-| Next.js + TypeScript | 5 | Planned |
+| Node.js + Express | 6 | ✅ Complete |
+| Next.js + TypeScript | 5 | ⏳ Next |
 | Real-World API Typing | 6 | Planned |
 | TypeScript Configuration | 3 | Planned |
 | Professional TypeScript | 7 | Planned |
 
-**37 of 64 topics published.** Unwritten topics appear greyed out in the sidebar so the
+**43 of 64 topics published.** Unwritten topics appear greyed out in the sidebar so the
 whole path is visible up front.
 
 ## Features

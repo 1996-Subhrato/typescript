@@ -1,0 +1,222 @@
+# Middleware & Error Handling
+
+## What
+
+Middleware is a function `(req, res, next)` that runs before your route handler. It can
+read or change the request, end the response, or pass control on with `next()`. Express
+types it as `RequestHandler`; error handlers are `ErrorRequestHandler`.
+
+## A typed middleware
+
+```ts
+import type { NextFunction, Request, RequestHandler, Response } from "express";
+
+export const requestLogger: RequestHandler = (req, res, next) => {
+  const started = Date.now();
+  res.on("finish", () => {
+    console.log(`${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - started}ms)`);
+  });
+  next();
+};
+
+// Equivalent, with the parameters annotated by hand
+export function noCache(req: Request, res: Response, next: NextFunction): void {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+}
+```
+
+Annotating the *variable* as `RequestHandler` (the first form) is shortest: the parameter
+types come from the context.
+
+## Middleware factories
+
+Most real middleware is configured, so it is a function that **returns** a handler.
+
+```ts
+import type { RequestHandler } from "express";
+
+export function requireHeader(name: string): RequestHandler {
+  return (req, res, next) => {
+    if (req.header(name) === undefined) {
+      res.status(400).json({ error: `Missing header: ${name}` });
+      return;
+    }
+    next();
+  };
+}
+```
+
+## Error-handling middleware
+
+An error handler has **four** parameters. Express recognises it by that arity, so even an
+unused `next` must stay.
+
+```ts
+import type { ErrorRequestHandler } from "express";
+
+export class HttpError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
+
+export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, _next) => {
+  if (err instanceof HttpError) {
+    res.status(err.status).json({ error: err.message });
+    return;
+  }
+
+  console.error(err);
+  res.status(500).json({ error: "Internal server error" });
+};
+```
+
+The framework types `err` as `any`. Declaring it `unknown` yourself is allowed and forces
+the `instanceof` check, so you cannot read `err.message` on something that is not an
+`Error`.
+
+Register it **last**:
+
+```ts
+import express from "express";
+import type { ErrorRequestHandler } from "express";
+
+declare const errorHandler: ErrorRequestHandler;
+
+const app = express();
+
+app.get("/boom", () => {
+  throw new Error("boom");
+});
+
+app.use(errorHandler);
+```
+
+### Throwing from `async` handlers
+
+In Express 5, an `async` handler that throws or rejects reaches the error handler without
+a `try/catch` or `next(err)`:
+
+```ts
+import express from "express";
+
+class HttpError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+declare function findOrder(id: string): Promise<{ id: string } | undefined>;
+
+const app = express();
+
+app.get("/orders/:id", async (req, res) => {
+  const order = await findOrder(req.params.id);
+  if (!order) throw new HttpError(404, "Order not found");
+  res.json(order);
+});
+```
+
+## Adding data to the request: augmenting `Request`
+
+Authentication middleware attaches a `user`. TypeScript does not know that, so reading
+`req.user` is an error until you extend the type. Express exposes a **global**
+`Express.Request` interface for exactly this; interfaces merge (*Declaration Files &
+Augmentation*).
+
+```ts
+import type { RequestHandler } from "express";
+
+type AuthUser = { id: number; role: "admin" | "member" };
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: AuthUser;
+    }
+  }
+}
+
+export const authenticate: RequestHandler = (req, res, next) => {
+  const header = req.header("authorization");
+  if (header === undefined) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  req.user = { id: 1, role: "member" }; // verify the token for real in production
+  next();
+};
+```
+
+Put the augmentation in a file your `tsconfig.json` includes, and keep it next to the
+middleware that sets the field.
+
+## The `user` is still optional
+
+The augmentation says `user?: AuthUser`, because the type cannot know the middleware ran.
+Every handler would need `if (!req.user)`. A **type predicate** moves that check to one
+place:
+
+```ts
+import type { Request, RequestHandler, Response } from "express";
+
+type AuthUser = { id: number; role: "admin" | "member" };
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: AuthUser;
+    }
+  }
+}
+
+type AuthedRequest = Request & { user: AuthUser };
+
+function isAuthed(req: Request): req is AuthedRequest {
+  return req.user !== undefined;
+}
+
+export function withUser(handler: (req: AuthedRequest, res: Response) => unknown): RequestHandler {
+  return (req, res) => {
+    if (!isAuthed(req)) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    return handler(req, res); // req: AuthedRequest — `user` is not optional here
+  };
+}
+
+export const me = withUser((req, res) => {
+  res.json({ id: req.user.id, role: req.user.role });
+});
+```
+
+A handler declared with `(req: AuthedRequest, ...)` cannot be passed straight to
+`app.get` — parameters are checked contravariantly, so a stricter request is rejected.
+Wrapping it, as above, is the safe version of the cast people reach for.
+
+## Common mistakes
+
+- **Writing an error handler with three parameters.** Express treats it as ordinary
+  middleware and never calls it for errors.
+- **Registering the error handler before the routes.** It must come last.
+- **Calling `next()` after sending a response**, or sending twice.
+- **Forgetting to `return` after `res.status(...).json(...)`**, so the handler continues.
+- **Casting `req as AuthedRequest`** inside every handler instead of narrowing once.
+- **`catch (err)` then `err.message`.** `err` is `unknown`; narrow it.
+
+## Practice
+
+1. Write `requireRole(role: "admin" | "member"): RequestHandler` that responds 403 when
+   `req.user?.role` does not match.
+2. Extend `HttpError` into `NotFoundError` and `ValidationError` (with a `fields` property)
+   and make `errorHandler` respond differently to each.
+3. Add `requestId?: string` to `Express.Request` and a middleware that sets it.

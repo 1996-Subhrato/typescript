@@ -1,0 +1,213 @@
+# Database Models
+
+## What
+
+One entity usually needs several types. A `User` as stored, as created, as updated, and as
+sent to a client are four different shapes. Using one type for all of them is how a
+password hash ends up in an API response.
+
+| Type | Describes | Example differences |
+| ---- | --------- | ------------------- |
+| **Row** | A record exactly as the database returns it | `id`, timestamps, `password_hash`, `deleted_at` |
+| **Insert** | What you supply to create one | No `id`, no timestamps |
+| **Update** | What you supply to change one | Everything optional, no `id` |
+| **Public / API** | What clients are allowed to see | No secrets, serialisable dates |
+
+## Start with the row
+
+```ts
+type UserRow = {
+  id: number;
+  email: string;
+  name: string;
+  password_hash: string;
+  created_at: Date;
+  deleted_at: Date | null; // nullable column: present, but possibly null
+};
+```
+
+Match the table. Nullable columns are `T | null`, not optional: the key is always present
+in a result row.
+
+## Derive the others with utility types
+
+You wrote these tools in *Utility Types*. This is where they earn their keep.
+
+```ts
+type UserRow = {
+  id: number;
+  email: string;
+  name: string;
+  password_hash: string;
+  created_at: Date;
+  deleted_at: Date | null;
+};
+
+// What you supply when creating: the database generates the rest
+type NewUserRow = Omit<UserRow, "id" | "created_at" | "deleted_at">;
+
+// What you supply when updating: any editable column
+type UserUpdate = Partial<Pick<UserRow, "email" | "name" | "password_hash">>;
+
+// What the API may expose: never the hash
+type PublicUser = Omit<UserRow, "password_hash" | "deleted_at">;
+
+const insert: NewUserRow = { email: "ada@example.com", name: "Ada", password_hash: "$2b$..." };
+const update: UserUpdate = { name: "Ada Lovelace" };
+const leak: PublicUser = {
+  id: 1,
+  email: "ada@example.com",
+  name: "Ada",
+  password_hash: "$2b$...", // Error: 'password_hash' does not exist in type 'PublicUser'
+  created_at: new Date(),
+};
+```
+
+Derived types track the row. Add a column and every derived type updates; a field you
+did not list for `PublicUser` is not exposed by accident... *unless* you used `Omit`, which
+silently exposes new columns. For anything security-relevant, use an **allow-list**
+(`Pick`) instead:
+
+```ts
+type UserRow = {
+  id: number;
+  email: string;
+  name: string;
+  password_hash: string;
+  created_at: Date;
+  deleted_at: Date | null;
+};
+
+// New columns are NOT exposed until someone adds them here on purpose
+type PublicUser = Pick<UserRow, "id" | "email" | "name" | "created_at">;
+```
+
+## Branded ids
+
+Two tables, two kinds of id, both `number`. Brand them (*Branded Types*) so they cannot be
+swapped.
+
+```ts
+declare const brand: unique symbol;
+type Brand<T, Name extends string> = T & { readonly [brand]: Name };
+
+type UserId = Brand<number, "UserId">;
+type OrderId = Brand<number, "OrderId">;
+
+type OrderRow = {
+  id: OrderId;
+  user_id: UserId;
+  total_cents: number;
+};
+
+declare function findOrdersForUser(userId: UserId): Promise<OrderRow[]>;
+declare const someOrder: OrderRow;
+
+findOrdersForUser(someOrder.user_id);
+findOrdersForUser(someOrder.id); // Error: 'OrderId' is not assignable to 'UserId'
+```
+
+The cast to a branded id belongs in one place, the repository, where a raw row becomes a
+typed one.
+
+## Map at the boundary
+
+The repository is where the database shape becomes the domain shape. Convert once, in one
+function.
+
+```ts
+type UserRow = {
+  id: number;
+  email: string;
+  name: string;
+  password_hash: string;
+  created_at: Date;
+};
+
+type User = {
+  id: number;
+  email: string;
+  name: string;
+  createdAt: Date;
+};
+
+function toUser(row: UserRow): User {
+  return { id: row.id, email: row.email, name: row.name, createdAt: row.created_at };
+}
+
+interface UserRepository {
+  findById(id: number): Promise<User | undefined>;
+}
+
+declare function queryOne(sql: string, params: unknown[]): Promise<UserRow | undefined>;
+
+export const userRepository: UserRepository = {
+  async findById(id) {
+    const row = await queryOne("SELECT * FROM users WHERE id = $1", [id]);
+    return row ? toUser(row) : undefined; // snake_case and password_hash stop here
+  },
+};
+```
+
+Notice `toUser` constructs the result field by field. A spread (`{ ...row }`) would carry
+`password_hash` straight through to the domain object.
+
+## Dates do not survive JSON
+
+A `Date` in a row becomes a **string** once serialised to JSON. The API type is not the row
+type. A small mapped type states the conversion honestly:
+
+```ts
+type Serialized<T> = T extends Date
+  ? string
+  : T extends object
+    ? { [K in keyof T]: Serialized<T[K]> }
+    : T;
+
+type User = { id: number; name: string; createdAt: Date; profile: { lastLogin: Date | null } };
+
+type UserResponse = Serialized<User>;
+// { id: number; name: string; createdAt: string; profile: { lastLogin: string | null } }
+
+const response: UserResponse = {
+  id: 1,
+  name: "Ada",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  profile: { lastLogin: null },
+};
+```
+
+The client-side type of this response is `UserResponse`, never `User`. Pretending the
+client receives a `Date` is a classic source of `value.getTime is not a function` errors.
+
+## Don't hand-maintain what a tool can generate
+
+Hand-written row types drift from the real schema. Tooling can generate them, or infer
+them from the schema definition:
+
+- **Query builders and ORMs** (Kysely, Drizzle, Prisma) produce or infer row, insert and
+  update types from your schema. Kysely's `Selectable`, `Insertable` and `Updateable`, and
+  Drizzle's inferred select/insert types, are exactly the Row/Insert/Update split above.
+- **Introspection tools** generate types from a live database.
+
+Check your tool's documentation for the exact API. The concepts here apply unchanged, and
+you still decide what the *public* shape is.
+
+## Common mistakes
+
+- **One `User` type for storage, API and forms.**
+- **Returning a row straight from an endpoint**, exposing every column.
+- **`Omit` for secrets**, which leaks any column added later. Use `Pick`.
+- **Optional (`?`) for nullable columns**, or the reverse.
+- **Typing a JSON response as containing `Date`.**
+- **Spreading a row into a response** (`{ ...row }`).
+
+## Practice
+
+1. Model `ProductRow` (`id`, `sku`, `name`, `price_cents`, `stock`, `created_at`,
+   `archived_at`) and derive `NewProduct`, `ProductUpdate`, `ProductSummary` (allow-list:
+   `id`, `name`, `price_cents`).
+2. Brand `ProductId` and `OrderId` and write a repository method that cannot be called with
+   the wrong one.
+3. Write `toProductResponse(row)` returning a type where `price_cents` becomes
+   `price: number` in dollars, and `created_at` becomes an ISO string.

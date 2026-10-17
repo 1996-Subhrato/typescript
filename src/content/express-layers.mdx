@@ -1,0 +1,226 @@
+# Controllers, Services, Repositories
+
+## What
+
+A backend that grows past a handful of routes separates concerns into layers. Types are
+what keep the layers honest — each layer exposes a small interface and knows nothing about
+the layers beyond it.
+
+| Layer | Responsibility | Knows about |
+| ----- | -------------- | ----------- |
+| **Controller** | HTTP: parse the request, call a service, shape the response | `Request`, `Response`, DTOs |
+| **Service** | Business rules | Domain types and repository interfaces |
+| **Repository** | Storage | Database, row types |
+
+Dependencies point one way: controller → service → repository. `Request` and `Response`
+never appear below the controller.
+
+## The domain types
+
+```ts
+export type User = {
+  id: number;
+  name: string;
+  email: string;
+};
+
+export type NewUser = Omit<User, "id">;
+
+export type UserError =
+  | { kind: "not-found"; id: number }
+  | { kind: "email-taken"; email: string };
+
+export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+```
+
+These are plain TypeScript. No Express, no database.
+
+## The repository: an interface and an implementation
+
+```ts
+type User = { id: number; name: string; email: string };
+type NewUser = Omit<User, "id">;
+
+export interface UserRepository {
+  findById(id: number): Promise<User | undefined>;
+  findByEmail(email: string): Promise<User | undefined>;
+  create(user: NewUser): Promise<User>;
+}
+
+export class InMemoryUserRepository implements UserRepository {
+  private readonly users = new Map<number, User>();
+  private nextId = 1;
+
+  async findById(id: number): Promise<User | undefined> {
+    return this.users.get(id);
+  }
+
+  async findByEmail(email: string): Promise<User | undefined> {
+    return [...this.users.values()].find((user) => user.email === email);
+  }
+
+  async create(user: NewUser): Promise<User> {
+    const created: User = { id: this.nextId++, ...user };
+    this.users.set(created.id, created);
+    return created;
+  }
+}
+```
+
+A Postgres or MongoDB implementation would satisfy the same interface. The service never
+learns which one it is using.
+
+## The service: business rules, typed outcomes
+
+```ts
+type User = { id: number; name: string; email: string };
+type NewUser = Omit<User, "id">;
+type UserError = { kind: "not-found"; id: number } | { kind: "email-taken"; email: string };
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+interface UserRepository {
+  findById(id: number): Promise<User | undefined>;
+  findByEmail(email: string): Promise<User | undefined>;
+  create(user: NewUser): Promise<User>;
+}
+
+export class UserService {
+  constructor(private readonly users: UserRepository) {}
+
+  async getUser(id: number): Promise<Result<User, UserError>> {
+    const user = await this.users.findById(id);
+    return user ? { ok: true, value: user } : { ok: false, error: { kind: "not-found", id } };
+  }
+
+  async register(input: NewUser): Promise<Result<User, UserError>> {
+    if (await this.users.findByEmail(input.email)) {
+      return { ok: false, error: { kind: "email-taken", email: input.email } };
+    }
+    return { ok: true, value: await this.users.create(input) };
+  }
+}
+```
+
+Expected failures are returned as a `Result` (*Result & Error Types*), so the controller
+**must** decide what each one means over HTTP.
+
+## The controller: translate to HTTP
+
+```ts
+import type { Request, RequestHandler, Response } from "express";
+
+type User = { id: number; name: string; email: string };
+type NewUser = Omit<User, "id">;
+type UserError = { kind: "not-found"; id: number } | { kind: "email-taken"; email: string };
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+declare class UserService {
+  getUser(id: number): Promise<Result<User, UserError>>;
+  register(input: NewUser): Promise<Result<User, UserError>>;
+}
+
+type ErrorBody = { error: string };
+
+function statusFor(error: UserError): { status: number; body: ErrorBody } {
+  switch (error.kind) {
+    case "not-found":
+      return { status: 404, body: { error: `User ${error.id} not found` } };
+    case "email-taken":
+      return { status: 409, body: { error: `${error.email} is already registered` } };
+  }
+}
+
+export function createUserController(service: UserService) {
+  const getById = async (
+    req: Request<{ id: string }>,
+    res: Response<User | ErrorBody>,
+  ): Promise<void> => {
+    const result = await service.getUser(Number(req.params.id));
+    if (result.ok) {
+      res.json(result.value);
+      return;
+    }
+    const { status, body } = statusFor(result.error);
+    res.status(status).json(body);
+  };
+
+  const create: RequestHandler<Record<string, never>, User | ErrorBody, NewUser> = async (req, res) => {
+    const result = await service.register(req.body);
+    if (result.ok) {
+      res.status(201).json(result.value);
+      return;
+    }
+    const { status, body } = statusFor(result.error);
+    res.status(status).json(body);
+  };
+
+  return { getById, create };
+}
+```
+
+`statusFor` has no `default`: add a third `UserError` kind and it stops compiling until
+the HTTP mapping exists. The business layer can grow a new failure without anyone
+forgetting to map it.
+
+### Wiring
+
+```ts
+import express from "express";
+import type { RequestHandler } from "express";
+
+declare const controller: {
+  getById: RequestHandler<{ id: string }>;
+  create: RequestHandler;
+};
+
+const app = express();
+app.use(express.json());
+
+app.get("/users/:id", controller.getById);
+app.post("/users", controller.create);
+```
+
+## Testing for free: structural typing
+
+Because the service depends on the `UserRepository` **interface**, a test supplies any
+object of the right shape — no mocking library, no `implements`.
+
+```ts
+type User = { id: number; name: string; email: string };
+
+interface UserRepository {
+  findById(id: number): Promise<User | undefined>;
+  findByEmail(email: string): Promise<User | undefined>;
+  create(user: Omit<User, "id">): Promise<User>;
+}
+
+const fakeRepository: UserRepository = {
+  findById: async () => ({ id: 1, name: "Ada", email: "ada@example.com" }),
+  findByEmail: async () => undefined,
+  create: async (user) => ({ id: 99, ...user }),
+};
+
+const incomplete: UserRepository = { // Error: 'findByEmail' and 'create' are missing
+  findById: async () => undefined,
+};
+```
+
+This is *Structural Typing & Compatibility* paying off: a test double is just an object.
+
+## Common mistakes
+
+- **Passing `Request`/`Response` into services.** It couples business logic to Express and
+  makes it untestable.
+- **A service that returns HTTP status codes.** Status codes belong to the controller.
+- **Throwing for expected outcomes.** Not-found and conflicts are values, not bugs.
+- **Importing the concrete repository in the service.** Depend on the interface.
+- **One giant file.** Layers are about dependency direction; folders follow from that.
+
+## Practice
+
+1. Add `update(id, patch: Partial<NewUser>)` through all three layers, with a `Result`
+   in the service and a mapping in the controller.
+2. Add `{ kind: "forbidden" }` to `UserError` and follow the compiler to every place that
+   needs changing.
+3. Write an `InMemoryUserRepository` test that registers the same email twice and asserts
+   the second attempt returns `email-taken`.

@@ -104,7 +104,8 @@ declare module "express-serve-static-core" {
 ```
 
 This is the standard way to type data attached by middleware, such as
-`req.user` after authentication — see *Middleware & Error Handling*.
+`req.user` after authentication. Express also exposes a global `Express.Request` interface
+meant for exactly this, which is usually simpler — see *Middleware & Error Handling*.
 
 ## Global augmentation
 

@@ -1,0 +1,219 @@
+# DTOs & Runtime Validation
+
+## What
+
+A **DTO** (data transfer object) is the shape of data crossing a boundary: a request
+body, a query string, a message from a queue. In TypeScript a DTO is usually a plain
+`type`.
+
+The central fact of this topic: **a type is not a check.** Types are erased before the
+program runs. Declaring that a request body is a `CreateUserDto` makes the *compiler*
+believe it; it does nothing about what the client really sent.
+
+## The gap
+
+```ts
+import express from "express";
+import type { Request, Response } from "express";
+
+type CreateUserDto = { name: string; email: string; age: number };
+
+const app = express();
+app.use(express.json());
+
+app.post("/users", (req: Request<Record<string, never>, unknown, CreateUserDto>, res: Response) => {
+  const { name, email, age } = req.body;
+  res.json({ name: name.toUpperCase(), email, nextAge: age + 1 });
+});
+```
+
+Every line type-checks. At runtime, `POST /users` with the body `{"name": 7}` throws on
+`name.toUpperCase()`, and `{"age": "30"}` produces `"301"`. The compiler was told a
+story and repeated it.
+
+The rule: **everything from outside the process is `unknown` until validated.**
+
+## Validate by hand
+
+A type guard (*Type Guards & Predicates*) turns `unknown` into a checked type:
+
+```ts
+type CreateUserDto = { name: string; email: string; age: number };
+
+function isCreateUserDto(value: unknown): value is CreateUserDto {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "name" in value &&
+    typeof value.name === "string" &&
+    "email" in value &&
+    typeof value.email === "string" &&
+    "age" in value &&
+    typeof value.age === "number"
+  );
+}
+
+function handle(body: unknown): string {
+  if (!isCreateUserDto(body)) return "invalid";
+  return body.name.toUpperCase(); // body: CreateUserDto, and now actually true
+}
+```
+
+This works, but it duplicates the type (change one, forget the other) and gives no useful
+error messages. For one or two small DTOs that is acceptable. Beyond that, use a schema.
+
+## Define the schema once, derive the type
+
+A schema library describes the shape as a runtime value and infers the TypeScript type
+from it. One source of truth: the check and the type cannot drift apart.
+
+```ts
+import { z } from "zod";
+
+const CreateUserSchema = z.object({
+  name: z.string().min(1),
+  email: z.email(),
+  age: z.number().int().min(0),
+  newsletter: z.boolean().default(false),
+});
+
+type CreateUserDto = z.infer<typeof CreateUserSchema>;
+// { name: string; email: string; age: number; newsletter: boolean }
+
+const result = CreateUserSchema.safeParse({ name: "Ada", email: "ada@example.com", age: 36 });
+
+if (result.success) {
+  console.log(result.data.newsletter); // false — the default was applied
+} else {
+  console.log(result.error.issues); // what failed, and where
+}
+```
+
+`safeParse` returns a **discriminated union**, `{ success: true; data } | { success: false;
+error }`, the same shape as the `Result` type you built earlier. `success` narrows it.
+
+(Examples use Zod. Valibot, ArkType and others work the same way. The idea matters, not
+the library.)
+
+### Input type vs output type
+
+A schema with defaults or transformations accepts one shape and produces another.
+
+```ts
+import { z } from "zod";
+
+const PageQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+type PageQueryInput = z.input<typeof PageQuerySchema>; // what callers may send
+type PageQuery = z.output<typeof PageQuerySchema>; // what you receive: both fields are numbers
+
+const parsed: PageQuery = PageQuerySchema.parse({ page: "3" }); // { page: 3, pageSize: 20 }
+```
+
+`z.infer` is the output type. `z.coerce.number()` is what you want for query strings and
+form fields, which always arrive as strings.
+
+## Using it in Express
+
+```ts
+import express from "express";
+import type { Request, Response } from "express";
+import { z } from "zod";
+
+const CreateUserSchema = z.object({
+  name: z.string().min(1),
+  email: z.email(),
+});
+
+type CreateUserDto = z.infer<typeof CreateUserSchema>;
+type User = CreateUserDto & { id: number };
+
+const app = express();
+app.use(express.json());
+
+app.post("/users", (req: Request, res: Response<User | { errors: string[] }>) => {
+  const parsed = CreateUserSchema.safeParse(req.body); // req.body is `any`; the schema checks it
+
+  if (!parsed.success) {
+    res.status(400).json({ errors: parsed.error.issues.map((issue) => issue.message) });
+    return;
+  }
+
+  const dto: CreateUserDto = parsed.data; // genuinely a CreateUserDto
+  res.status(201).json({ id: 1, ...dto });
+});
+```
+
+Notice `req` is a plain `Request` here: the body is *not* annotated, because the schema
+establishes its type.
+
+### A reusable middleware
+
+```ts
+import type { RequestHandler } from "express";
+import type { z } from "zod";
+
+export function validateBody<S extends z.ZodType>(schema: S): RequestHandler {
+  return (req, res, next) => {
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ errors: parsed.error.issues });
+      return;
+    }
+    req.body = parsed.data;
+    next();
+  };
+}
+```
+
+The middleware validates, but downstream handlers still see `req.body` as `any`. If you
+want the type to flow through, the controller should call `safeParse` itself (as above),
+or you can build a typed wrapper that passes `parsed.data` as an argument.
+
+## Never write this
+
+```ts
+import type { Request } from "express";
+
+type CreateUserDto = { name: string; email: string };
+
+function bad(req: Request): CreateUserDto {
+  return req.body as CreateUserDto; // an assertion is not validation
+}
+```
+
+`as` silences the compiler without checking anything. It is the single most common source
+of "but the types said it was a string" bugs.
+
+## What to validate at which boundary
+
+| Boundary | Examples | Treat as |
+| -------- | -------- | -------- |
+| HTTP request | body, query, params, headers | `unknown` |
+| HTTP response from another service | `fetch(...).then(r => r.json())` | `unknown` |
+| Storage | `localStorage`, files, cache, queue messages | `unknown` |
+| Environment | `process.env` | strings; see *Environment & Config* |
+| Your own code | function arguments you control | the declared type |
+
+Inside the program, trust the types. At the edge, check.
+
+## Common mistakes
+
+- **`as CreateUserDto` on `req.body`.**
+- **Annotating `Request<..., CreateUserDto>` and calling it validation.**
+- **Maintaining a type and a validator separately.** Derive one from the other.
+- **Validating on the way out only.** Validate input where it enters.
+- **Returning the raw validation error object to clients**, which can leak schema detail.
+  Map it to a stable error shape.
+
+## Practice
+
+1. Write a schema for a `Product` with `name`, `priceCents` (non-negative integer),
+   `tags` (array of strings, optional) and derive its type.
+2. Write `parseOrThrow<S extends z.ZodType>(schema: S, value: unknown): z.output<S>`
+   and use it in a handler.
+3. Hand-write a guard for `{ id: number; tags: string[] }`. How many lines is it? How would
+   it grow for nested objects?

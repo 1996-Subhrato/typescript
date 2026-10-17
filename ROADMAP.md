@@ -69,12 +69,12 @@ Type-level programming: transforming types instead of values.
 
 ## Level 4b — Node.js + Express · *Phase 6* · 6 topics
 
-1. **Request & Response Typing** — typed params, body, query, response payloads
-2. **Middleware & Error Handling** — typed middleware, augmenting `Request`, error middleware
-3. **Controllers, Services, Repositories** — where types belong in a layered backend
-4. **DTOs & Runtime Validation** — why a type is not a check, and how to bridge the gap
-5. **Environment & Config** — type-safe env vars that fail loudly at boot
-6. **Database Models** — row types vs insert types, keeping them in sync
+1. **Request & Response Typing** — typed params, body, query, response payloads ✅
+2. **Middleware & Error Handling** — typed middleware, augmenting `Request`, error middleware ✅
+3. **Controllers, Services, Repositories** — where types belong in a layered backend ✅
+4. **DTOs & Runtime Validation** — why a type is not a check, and how to bridge the gap ✅
+5. **Environment & Config** — type-safe env vars that fail loudly at boot ✅
+6. **Database Models** — row types vs insert types, keeping them in sync ✅
 
 ## Level 4c — Next.js + TypeScript · *Phase 7* · 5 topics
 

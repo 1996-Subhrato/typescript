@@ -96,11 +96,22 @@ function extractBlocks(slug: string): Extracted {
   let buffer: string[] = [];
   let skipNext = false;
   let lastNonEmpty = "";
+  // Prose is linted per PARAGRAPH: inline code may legitimately wrap across source lines.
+  let paragraph: string[] = [];
+  let paragraphStart = 0;
+
+  const flushParagraph = (): void => {
+    if (paragraph.length > 0) {
+      proseIssues.push(...proseIssuesIn(slug, paragraph.join(" "), paragraphStart));
+      paragraph = [];
+    }
+  };
 
   mdx.forEach((line, index) => {
     const opening = /^```(\w*)/.exec(line);
 
     if (fence === null && opening) {
+      flushParagraph();
       fence = opening[1] ?? "";
       startLine = index + 2;
       buffer = [];
@@ -115,11 +126,15 @@ function extractBlocks(slug: string): Extracted {
       lastNonEmpty = "";
     } else if (fence !== null) {
       buffer.push(line);
+    } else if (line.trim() === "") {
+      flushParagraph();
     } else {
-      if (line.trim() !== "") lastNonEmpty = line;
-      proseIssues.push(...proseIssuesIn(slug, line, index + 1));
+      lastNonEmpty = line;
+      if (paragraph.length === 0) paragraphStart = index + 1;
+      paragraph.push(line.trim());
     }
   });
+  flushParagraph();
 
   return { blocks, skipped, proseIssues };
 }

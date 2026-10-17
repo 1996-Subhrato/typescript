@@ -90,12 +90,12 @@ export const levels = [
     summary: "Typing a backend end to end.",
     difficulty: "intermediate",
     topics: [
-      { slug: "express-request-response", title: "Request and Response Typing", summary: "Typed params, body, query and response payloads.", status: "planned" },
-      { slug: "express-middleware", title: "Middleware and Error Handling", summary: "Typed middleware, augmenting Request, error middleware.", status: "planned" },
-      { slug: "express-layers", title: "Controllers, Services, Repositories", summary: "Where types belong in a layered backend.", status: "planned" },
-      { slug: "dtos-and-validation", title: "DTOs and Runtime Validation", summary: "Why a type is not a check, and how to bridge the gap.", status: "planned" },
-      { slug: "env-and-config", title: "Environment and Config", summary: "Type-safe env vars that fail loudly at boot.", status: "planned" },
-      { slug: "database-models", title: "Database Models", summary: "Row types, insert types, and keeping them in sync.", status: "planned" },
+      { slug: "express-request-response", title: "Request and Response Typing", summary: "Typed params, body, query and response payloads.", status: "published" },
+      { slug: "express-middleware", title: "Middleware and Error Handling", summary: "Typed middleware, augmenting Request, error middleware.", status: "published" },
+      { slug: "express-layers", title: "Controllers, Services, Repositories", summary: "Where types belong in a layered backend.", status: "published" },
+      { slug: "dtos-and-validation", title: "DTOs and Runtime Validation", summary: "Why a type is not a check, and how to bridge the gap.", status: "published" },
+      { slug: "env-and-config", title: "Environment and Config", summary: "Type-safe env vars that fail loudly at boot.", status: "published" },
+      { slug: "database-models", title: "Database Models", summary: "Row types, insert types, and keeping them in sync.", status: "published" },
     ],
   },
   {
