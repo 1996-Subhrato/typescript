@@ -1,5 +1,6 @@
 /**
- * Content quality gate: compiles every ```ts / ```tsx block in src/content/*.mdx.
+ * Content quality gate: compiles every ```ts / ```tsx block in src/content/*.mdx and the capstone
+ * pages in src/capstone/*.mdx.
  *
  * Convention:
  *   - a line EXPECTED to fail carries a trailing `// Error` comment
@@ -17,20 +18,26 @@
  * (BAD DIRECTIVE). Blocks sharing an option set are compiled together in one tsc run. The
  * directive lines stay in the block, so line numbers still map 1:1.
  *
+ * Project files (capstone pages only): a fence with a path, such as ```ts title="src/domain/order.ts",
+ * is a FILE of one project rather than an isolated snippet. All such blocks, across every capstone
+ * page, are written to their paths and compiled together, so imports between them resolve. Each
+ * file may appear once, must be a module, and is compiled with the base options.
+ *
  * Skipping: a block that genuinely cannot compile standalone (it depends on types
  * Next.js generates from the real route tree, such as `PageProps<"/blog/[slug]">`)
  * may be preceded by a line containing exactly `{/* check:skip *\/}`. Skips are
  * counted and printed, so they cannot hide.
  *
  * Usage:
- *   npm run check:content                 # every topic
- *   npm run check:content -- narrowing    # selected topics by slug
+ *   npm run check:content                          # every topic and capstone page
+ *   npm run check:content -- narrowing             # selected topics by slug
+ *   npm run check:content -- capstone/01-domain    # a capstone page (its project files compile together)
  *
  * Runs directly under Node's type stripping, so it avoids enums and parameter
  * properties (anything that would need real transformation).
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 
@@ -42,10 +49,14 @@ interface Block {
   /** 1-based line in the .mdx file where the block's first code line sits. */
   readonly mdxLine: number;
   readonly lines: readonly string[];
+  /** Set for project files: the path from the fence's `title="..."`. */
+  readonly projectPath: string | undefined;
 }
 
 const ROOT = process.cwd();
 const CONTENT_DIR = path.join(ROOT, "src", "content");
+const CAPSTONE_DIR = path.join(ROOT, "src", "capstone");
+const CAPSTONE_PREFIX = "capstone/";
 const TSC = path.join(ROOT, "node_modules", "typescript", "bin", "tsc");
 const EXPECTED_ERROR = /\/\/\s*Error\b/;
 const SKIP_MARKER = "{/* check:skip */}";
@@ -57,11 +68,23 @@ const SKIP_MARKER = "{/* check:skip */}";
  */
 const WORK_DIR = path.join(ROOT, "node_modules", ".cache", "content-check");
 
-function allSlugs(): string[] {
-  return readdirSync(CONTENT_DIR)
+function mdxNames(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
     .filter((file) => file.endsWith(".mdx"))
     .map((file) => file.slice(0, -".mdx".length))
     .sort();
+}
+
+/** Topic slugs, then `capstone/<name>` for each capstone page. */
+function allSlugs(): string[] {
+  return [...mdxNames(CONTENT_DIR), ...mdxNames(CAPSTONE_DIR).map((name) => `${CAPSTONE_PREFIX}${name}`)];
+}
+
+function sourceFile(slug: string): string {
+  return slug.startsWith(CAPSTONE_PREFIX)
+    ? path.join(CAPSTONE_DIR, `${slug.slice(CAPSTONE_PREFIX.length)}.mdx`)
+    : path.join(CONTENT_DIR, `${slug}.mdx`);
 }
 
 function asLanguage(value: string): Language | null {
@@ -95,12 +118,14 @@ function proseIssuesIn(slug: string, line: string, lineNumber: number): string[]
 
 /** Pulls every ts/tsx fence out of one MDX file. */
 function extractBlocks(slug: string): Extracted {
-  const mdx = readFileSync(path.join(CONTENT_DIR, `${slug}.mdx`), "utf8").split(/\r?\n/);
+  const isCapstone = slug.startsWith(CAPSTONE_PREFIX);
+  const mdx = readFileSync(sourceFile(slug), "utf8").split(/\r?\n/);
   const blocks: Block[] = [];
   const proseIssues: string[] = [];
   let skipped = 0;
 
   let fence: string | null = null; // language of the fence we are inside, else null
+  let fenceTitle: string | undefined;
   let startLine = 0;
   let buffer: string[] = [];
   let skipNext = false;
@@ -117,11 +142,12 @@ function extractBlocks(slug: string): Extracted {
   };
 
   mdx.forEach((line, index) => {
-    const opening = /^```(\w*)/.exec(line);
+    const opening = /^```(\w*)(.*)$/.exec(line);
 
     if (fence === null && opening) {
       flushParagraph();
       fence = opening[1] ?? "";
+      fenceTitle = /title="([^"]+)"/.exec(opening[2] ?? "")?.[1];
       startLine = index + 2;
       buffer = [];
       skipNext = lastNonEmpty.trim() === SKIP_MARKER;
@@ -129,7 +155,11 @@ function extractBlocks(slug: string): Extracted {
       const language = asLanguage(fence);
       if (language) {
         if (skipNext) skipped += 1;
-        else blocks.push({ slug, language, mdxLine: startLine, lines: buffer });
+        else {
+          // Only capstone pages treat a titled fence as a file of the project.
+          const projectPath = isCapstone ? fenceTitle : undefined;
+          blocks.push({ slug, language, mdxLine: startLine, lines: buffer, projectPath });
+        }
       }
       fence = null;
       lastNonEmpty = "";
@@ -212,92 +242,137 @@ function optionsFor(overrides: Record<string, unknown>): Record<string, unknown>
   return merged;
 }
 
+/** Runs tsc over one directory and returns its report, whether or not it found errors. */
+function runTsc(dir: string): string {
+  try {
+    return execFileSync("node", [TSC, "-p", dir, "--pretty", "false"], { encoding: "utf8" });
+  } catch (error: unknown) {
+    // tsc exits non-zero when it finds errors; its report is on stdout.
+    const failure = error as { stdout?: string; stderr?: string };
+    return `${failure.stdout ?? ""}${failure.stderr ?? ""}`;
+  }
+}
+
 const requested = process.argv.slice(2);
 const slugs = requested.length > 0 ? requested : allSlugs();
 
 rmSync(WORK_DIR, { recursive: true, force: true });
 mkdirSync(WORK_DIR, { recursive: true });
 
+/** Keyed by path relative to WORK_DIR, e.g. "group-0/narrowing__01.ts" or "project/src/a.ts". */
 const compiled = new Map<string, Block>();
 let skippedTotal = 0;
 const proseIssues: string[] = [];
 const directiveProblems: string[] = [];
+const projectProblems: string[] = [];
 let groupCount = 0;
+let projectFileCount = 0;
 
 try {
-  // Collect blocks, then bucket them by their distinct option set.
-  const groups = new Map<string, { overrides: Record<string, unknown>; files: string[] }>();
+  // Isolated snippets are bucketed by their distinct option set; project files go to one project.
+  const groups = new Map<string, { overrides: Record<string, unknown>; dir: string }>();
+  const projectDir = path.join(WORK_DIR, "project");
 
   for (const slug of slugs) {
     const { blocks, skipped, proseIssues: issues } = extractBlocks(slug);
     skippedTotal += skipped;
     proseIssues.push(...issues);
 
-    blocks.forEach((block, index) => {
-      const fileName = `${slug}__${String(index + 1).padStart(2, "0")}.${block.language}`;
+    let snippetNumber = 0;
+    for (const block of blocks) {
+      const where = `${block.slug}.mdx:${block.mdxLine}`;
+
+      if (block.projectPath !== undefined) {
+        const relPath = `project/${block.projectPath}`;
+        if (compiled.has(relPath)) {
+          projectProblems.push(`${where} DUPLICATE PROJECT FILE ${block.projectPath} (each file may appear once)`);
+          continue;
+        }
+        if (!block.lines.some((line) => /^(import|export)\b/.test(line))) {
+          projectProblems.push(`${where} PROJECT FILE ${block.projectPath} must be a module (needs an import or export)`);
+        }
+        const target = path.join(projectDir, block.projectPath);
+        mkdirSync(path.dirname(target), { recursive: true });
+        // Project files are written exactly as shown: no appended line, so line N is line N.
+        writeFileSync(target, `${block.lines.join("\n")}\n`);
+        compiled.set(relPath, block);
+        projectFileCount += 1;
+        continue;
+      }
+
+      snippetNumber += 1;
       const { overrides, problems } = parseDirectives(block);
       directiveProblems.push(...problems);
 
       const key = JSON.stringify(Object.entries(overrides).sort(([a], [b]) => a.localeCompare(b)));
       let group = groups.get(key);
       if (!group) {
-        group = { overrides, files: [] };
+        group = { overrides, dir: `group-${groups.size}` };
         groups.set(key, group);
       }
-      group.files.push(fileName);
 
-      const dir = path.join(WORK_DIR, `group-${[...groups.keys()].indexOf(key)}`);
-      mkdirSync(dir, { recursive: true });
+      const fileName = `${slug.replace("/", "__")}__${String(snippetNumber).padStart(2, "0")}.${block.language}`;
+      mkdirSync(path.join(WORK_DIR, group.dir), { recursive: true });
       // `export {}` goes at the END so block line N is file line N.
-      writeFileSync(path.join(dir, fileName), `${block.lines.join("\n")}\nexport {};\n`);
-      compiled.set(fileName, block);
-    });
+      writeFileSync(path.join(WORK_DIR, group.dir, fileName), `${block.lines.join("\n")}\nexport {};\n`);
+      compiled.set(`${group.dir}/${fileName}`, block);
+    }
   }
 
   groupCount = groups.size;
-  const errors = new Map<string, string>(); // "file:line" -> message
+  const errors = new Map<string, string>(); // "relative/path:line" -> message
 
-  for (const [key, group] of groups) {
-    const dir = path.join(WORK_DIR, `group-${[...groups.keys()].indexOf(key)}`);
+  const collect = (output: string): void => {
+    for (const match of output.matchAll(/^(.+?\.tsx?)\((\d+),\d+\): error (TS\d+): (.*)$/gm)) {
+      const [, file, line, code, message] = match;
+      if (!file || !line) continue;
+      const relative = path.relative(WORK_DIR, path.resolve(ROOT, file)).split(path.sep).join("/");
+      errors.set(`${relative}:${line}`, `${code} ${message}`);
+    }
+  };
+
+  for (const group of groups.values()) {
+    const dir = path.join(WORK_DIR, group.dir);
     writeFileSync(
       path.join(dir, "tsconfig.json"),
       JSON.stringify({ compilerOptions: optionsFor(group.overrides), include: ["*.ts", "*.tsx"] }),
     );
+    collect(runTsc(dir));
+  }
 
-    let output = "";
-    try {
-      output = execFileSync("node", [TSC, "-p", dir, "--pretty", "false"], { encoding: "utf8" });
-    } catch (error: unknown) {
-      // tsc exits non-zero when it finds errors; its report is on stdout.
-      const failure = error as { stdout?: string; stderr?: string };
-      output = `${failure.stdout ?? ""}${failure.stderr ?? ""}`;
-    }
-
-    for (const match of output.matchAll(/^(.+?\.tsx?)\((\d+),\d+\): error (TS\d+): (.*)$/gm)) {
-      const [, file, line, code, message] = match;
-      if (file && line) errors.set(`${path.basename(file)}:${line}`, `${code} ${message}`);
-    }
+  if (projectFileCount > 0) {
+    writeFileSync(
+      path.join(projectDir, "tsconfig.json"),
+      JSON.stringify({ compilerOptions: BASE_OPTIONS, include: ["**/*.ts", "**/*.tsx"] }),
+    );
+    collect(runTsc(projectDir));
   }
 
   let problems = 0;
   let claimed = 0;
 
-  for (const [fileName, block] of compiled) {
+  for (const [relPath, block] of compiled) {
     block.lines.forEach((text, index) => {
-      const real = errors.get(`${fileName}:${index + 1}`);
+      const real = errors.get(`${relPath}:${index + 1}`);
       const isClaimed = EXPECTED_ERROR.test(text);
+      const label = block.projectPath === undefined ? "" : `[${block.projectPath}] `;
       const where = `${block.slug}.mdx:${block.mdxLine + index}`;
 
       if (isClaimed) claimed += 1;
       if (real && !isClaimed) {
         problems += 1;
-        console.log(`UNEXPECTED   ${where}\n    ${text.trim()}\n    -> ${real}`);
+        console.log(`UNEXPECTED   ${where} ${label}\n    ${text.trim()}\n    -> ${real}`);
       }
       if (isClaimed && !real) {
         problems += 1;
-        console.log(`STALE CLAIM  ${where}\n    ${text.trim()}`);
+        console.log(`STALE CLAIM  ${where} ${label}\n    ${text.trim()}`);
       }
     });
+  }
+
+  for (const issue of projectProblems) {
+    problems += 1;
+    console.log(`PROJECT      ${issue}`);
   }
 
   for (const issue of directiveProblems) {
@@ -310,19 +385,24 @@ try {
     console.log(`MDX PROSE    ${issue}`);
   }
 
-  // Errors that did not land on any block line (bad import, trailing `export {}`, ...).
+  // Errors that did not land on any block line (bad import, trailing `export {}`, a file nobody claims...).
   for (const [key, message] of errors) {
-    const [fileName, line] = key.split(":");
-    const block = fileName ? compiled.get(fileName) : undefined;
-    if (block && Number(line) > block.lines.length) {
+    const separator = key.lastIndexOf(":");
+    const relPath = key.slice(0, separator);
+    const line = Number(key.slice(separator + 1));
+    const block = compiled.get(relPath);
+    if (!block) {
+      problems += 1;
+      console.log(`UNCLAIMED    ${key} -> ${message}`);
+    } else if (line > block.lines.length) {
       problems += 1;
       console.log(`OUT OF RANGE ${key} -> ${message}`);
     }
   }
 
   console.log(
-    `\ntopics: ${slugs.length} | blocks: ${compiled.size} | option sets: ${groupCount} | skipped: ${skippedTotal} | ` +
-      `expected-error lines: ${claimed} | compiler errors: ${errors.size} | problems: ${problems}`,
+    `\npages: ${slugs.length} | blocks: ${compiled.size} (project files: ${projectFileCount}) | option sets: ${groupCount} | ` +
+      `skipped: ${skippedTotal} | expected-error lines: ${claimed} | compiler errors: ${errors.size} | problems: ${problems}`,
   );
   process.exitCode = problems === 0 ? 0 : 1;
 } finally {

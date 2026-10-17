@@ -131,7 +131,13 @@ only (for example `// @strictNullChecks: false`), which is how the configuration
 flag both on and off. Lists are comma-separated, `// @types:` clears a list, and `default`
 removes a base option; an unknown option or bad value fails the check.
 
-To check selected topics only: `npm run check:content -- narrowing`. A snippet that genuinely
+The guided capstone (`src/capstone/`) goes one step further: a code block with a path, such as
+`ts title="src/domain/order.ts"`, is a **file of one project**. Every such block across the capstone
+pages is written to its path and compiled together, so the files can import each other and the pages
+can never drift from code that actually builds. Each file may appear once and must be a module.
+
+To check selected topics only: `npm run check:content -- narrowing` (capstone pages are
+`capstone/<name>`). A snippet that genuinely
 cannot compile standalone can be preceded by a `{/* check:skip */}` line; skips are counted and
 printed. With a dev server running, `npm run check:pages` smoke-tests every rendered page and
 confirms that every internal link inside an article points at a topic that exists.
