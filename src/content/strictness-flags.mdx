@@ -1,0 +1,478 @@
+# Strictness Flags
+
+## What
+
+TypeScript's checks are a dial, not a switch. A small group of flags turns on the checks that
+make types trustworthy; a second group is opt-in. This page covers both, shows what each flag
+catches by compiling the same code with the flag **on and off**, and explains which ones this
+site uses and why.
+
+> Examples below start with lines like `// @strictNullChecks: false`. Those lines are not
+> part of the code. They set a compiler option for that one example, so the same snippet can
+> be checked under different settings (the convention TypeScript's own tests use). Unless a
+> line says otherwise, an example is compiled with this site's settings: everything below
+> `strict`, plus the opt-ins in the second table.
+
+## What `strict` turns on
+
+`"strict": true` is shorthand for a group of flags. In TypeScript 5.9.3 the group is exactly
+these nine (read from the compiler, not from memory). Any of them can still be switched off
+individually after `strict` is on.
+
+| Flag | Catches |
+| ---- | ------- |
+| `noImplicitAny` | A value silently typed `any` because nothing could be inferred |
+| `strictNullChecks` | `null` / `undefined` used as if they were always absent from a type |
+| `strictFunctionTypes` | Unsound function parameter assignments |
+| `strictBindCallApply` | Wrong arguments to `bind`, `call`, `apply` |
+| `strictPropertyInitialization` | Class fields never assigned |
+| `noImplicitThis` | `this` with no known type |
+| `useUnknownInCatchVariables` | Treating a caught error as a known type |
+| `strictBuiltinIteratorReturn` | Built-in iterators' final value typed as `any` |
+| `alwaysStrict` | Emits `"use strict"` (no type effect) |
+
+New TypeScript versions can add flags to the group. That is the price and the point of
+`strict`: you get the new checks by upgrading.
+
+## The nine, one at a time
+
+### `noImplicitAny`
+
+When TypeScript cannot work out a type and you gave none, it falls back to `any`. This flag
+makes that an error instead.
+
+```ts
+// @noImplicitAny: false
+function total(items) {
+  return items.length;
+}
+```
+
+That compiles: `items` is `any`, so `total(42)` also compiles and returns `undefined`. With the
+flag on:
+
+```ts
+function total(items) { // Error: Parameter 'items' implicitly has an 'any' type
+  return items.length;
+}
+```
+
+This is the flag that stops a codebase quietly filling with `any`.
+
+### `strictNullChecks`
+
+With it off, `null` and `undefined` belong to **every** type. That is the JavaScript model,
+and the source of "cannot read properties of undefined".
+
+```ts
+// @strictNullChecks: false
+type User = { id: number; name: string };
+
+function userName(users: User[]): string {
+  return users.find((user) => user.id === 1).name; // no error: find can return undefined
+}
+const name: string = null;
+```
+
+On:
+
+```ts
+type User = { id: number; name: string };
+
+function userName(users: User[]): string {
+  return users.find((user) => user.id === 1).name; // Error: Object is possibly 'undefined'
+}
+```
+
+If you only turn on one flag, turn on this one. It is also the one with the most to fix in
+an existing codebase.
+
+### `strictFunctionTypes`
+
+Function parameters are checked **contravariantly**: a handler for any `Animal` can stand in
+for a handler for `Dog`, not the reverse (*Structural Typing & Compatibility*).
+
+```ts
+// @strictFunctionTypes: false
+type Animal = { name: string };
+type Dog = { name: string; breed: string };
+type Handler<T> = (value: T) => void;
+
+const handleDog: Handler<Dog> = (dog) => console.log(dog.breed);
+const handleAnimal: Handler<Animal> = handleDog; // allowed when the flag is off
+```
+
+On, the last line is rejected:
+
+```ts
+type Animal = { name: string };
+type Dog = { name: string; breed: string };
+type Handler<T> = (value: T) => void;
+
+const handleDog: Handler<Dog> = (dog) => console.log(dog.breed);
+const handleAnimal: Handler<Animal> = handleDog; // Error: a Dog handler needs 'breed'
+```
+
+(Methods declared with method syntax are deliberately exempt; the *Structural Typing* page
+shows why.)
+
+### `strictBindCallApply`
+
+Without it, `bind`, `call` and `apply` accept anything and return `any`.
+
+```ts
+// @strictBindCallApply: false
+function add(a: number, b: number): number {
+  return a + b;
+}
+const addOne = add.bind(null, "1"); // allowed when off; addOne is `any`
+```
+
+On, the arguments are checked and the result keeps its type:
+
+```ts
+function add(a: number, b: number): number {
+  return a + b;
+}
+const addOne = add.bind(null, "1"); // Error: 'string' is not assignable to 'number'
+```
+
+### `strictPropertyInitialization`
+
+Requires `strictNullChecks`. A class field that is never assigned is an error, because the
+type says it exists.
+
+```ts
+class Cart {
+  items: string[]; // Error: not definitely assigned in the constructor
+}
+```
+
+```ts
+// @strictPropertyInitialization: false
+class Cart {
+  items: string[];
+}
+```
+
+### `noImplicitThis`
+
+```ts
+// @noImplicitThis: false
+function describe() {
+  return this.name;
+}
+```
+
+```ts
+function describe() {
+  return this.name; // Error: 'this' implicitly has type 'any'
+}
+```
+
+### `useUnknownInCatchVariables`
+
+The `catch` variable can be anything that was thrown. With the flag on it is `unknown`.
+
+```ts
+// @useUnknownInCatchVariables: false
+try {
+  JSON.parse("{");
+} catch (error) {
+  console.log(error.message); // allowed: `error` is any
+}
+```
+
+```ts
+try {
+  JSON.parse("{");
+} catch (error) {
+  console.log(error.message); // Error: 'error' is of type 'unknown'
+}
+```
+
+### `strictBuiltinIteratorReturn`
+
+Added in TypeScript 5.6. The last result of a built-in iterator (`array.values()`, `Map`
+entries, ...) has `done: true` and a return value that is always `undefined`. Off, TypeScript
+types that value as `any`; on, it is `undefined`.
+
+```ts
+// @strictBuiltinIteratorReturn: false
+const result = [1, 2, 3].values().next();
+if (result.done) {
+  const value: number = result.value; // allowed: `any`
+}
+```
+
+```ts
+const result = [1, 2, 3].values().next();
+if (result.done) {
+  const value: number = result.value; // Error: 'undefined' is not assignable to 'number'
+}
+```
+
+### `alwaysStrict`
+
+Parses files in JavaScript strict mode and emits `"use strict"`. It has no type-checking
+effect, and ES modules are strict already, so for module code it changes nothing.
+
+## Opt-in flags this site enables
+
+None of these are part of `strict`. This repository turns on the first six.
+
+| Flag | Catches |
+| ---- | ------- |
+| `noUncheckedIndexedAccess` | Array and index lookups that may miss |
+| `noImplicitOverride` | Overriding a method without saying `override` |
+| `noFallthroughCasesInSwitch` | A `case` that runs into the next one |
+| `noUnusedLocals` | Declared but unused variables |
+| `noUnusedParameters` | Declared but unused parameters |
+| `verbatimModuleSyntax` | Type imports that are not marked as types |
+
+### `noUncheckedIndexedAccess`
+
+An index lookup is a lookup that can fail, but TypeScript normally types it as always
+succeeding.
+
+```ts
+// @noUncheckedIndexedAccess: false
+const names: string[] = ["Ada"];
+const first = names[0];
+first.toUpperCase(); // allowed: `first` is typed `string`, even for an empty array
+```
+
+```ts
+const names: string[] = ["Ada"];
+const first = names[0];
+first.toUpperCase(); // Error: 'first' is possibly 'undefined'
+```
+
+The flag adds `| undefined` to index lookups. That is the whole cost and the whole benefit.
+Positions of a **tuple** are unaffected, since their length is known.
+
+### `noImplicitOverride`
+
+```ts
+class Animal {
+  speak(): string {
+    return "...";
+  }
+}
+
+class Dog extends Animal {
+  speak(): string { // Error: this member must have an 'override' modifier
+    return "woof";
+  }
+}
+```
+
+### `noFallthroughCasesInSwitch`
+
+```ts
+function label(count: number): string {
+  let result = "";
+  switch (count) {
+    case 1: // Error: Fallthrough case in switch
+      result += "one ";
+    case 2:
+      result += "two";
+      break;
+  }
+  return result;
+}
+```
+
+### `noUnusedLocals` and `noUnusedParameters`
+
+Neither is on in the examples by default, so they are enabled here:
+
+```ts
+// @noUnusedLocals: true
+// @noUnusedParameters: true
+function area(width: number, height: number): number { // Error: 'height' is declared but never used
+  const unused = 1; // Error: 'unused' is declared but its value is never read
+  return width * width;
+}
+```
+
+TypeScript exempts a parameter whose name starts with an underscore (`_height`), the
+convention for "required by the signature, intentionally unused". Linters can disagree: this
+repository's ESLint setup still reports `_height` through `no-unused-vars`, so two tools can
+give two answers. Decide which one is authoritative for your project and configure the other
+to match.
+
+### `verbatimModuleSyntax`
+
+Requires you to say which imports are types, so the compiler (and any other tool) knows
+exactly what to keep in the output.
+
+```ts
+import { ReactNode } from "react"; // Error: 'ReactNode' is a type and must be imported using a type-only import
+export const empty: ReactNode = null;
+```
+
+```ts
+import type { ReactNode } from "react";
+export const empty: ReactNode = null;
+```
+
+## Opt-in flags this site leaves off
+
+### `exactOptionalPropertyTypes`
+
+By default `nickname?: string` means "may be missing **or** may be `undefined`". With this flag
+it means only "may be missing":
+
+```ts
+// @exactOptionalPropertyTypes: true
+type Profile = { nickname?: string };
+
+const a: Profile = {};
+const b: Profile = { nickname: "Ada" };
+const c: Profile = { nickname: undefined }; // Error: 'undefined' is not assignable with exactOptionalPropertyTypes
+```
+
+That precision is real value where "absent" and "present but `undefined`" genuinely differ,
+such as a `PATCH` body where a missing key means "leave alone". Why it is off here:
+**forwarding a possibly-`undefined` value into an optional property stops working**.
+
+```tsx
+// @exactOptionalPropertyTypes: true
+type BadgeProps = { label: string; tone?: "info" | "warning" };
+
+function Badge({ label, tone = "info" }: BadgeProps) {
+  return <span className={tone}>{label}</span>;
+}
+
+function Row({ tone }: { tone: "info" | "warning" | undefined }) {
+  return <Badge label="New" tone={tone} />; // Error: 'undefined' is not assignable to the optional 'tone'
+}
+```
+
+The same happens with schema output: Zod's `.optional()` produces `nickname?: string | undefined`.
+
+```ts
+// @exactOptionalPropertyTypes: true
+import { z } from "zod";
+
+const ProfileSchema = z.object({ nickname: z.string().optional() });
+type ProfileDto = z.output<typeof ProfileSchema>;
+type Profile = { nickname?: string };
+
+declare const dto: ProfileDto;
+const profile: Profile = dto; // Error: the DTO allows `undefined`, Profile does not
+```
+
+React's own types avoid the problem by writing `className?: string | undefined` on every
+optional prop, which is exactly what you would have to do throughout your code, defeating the
+flag's purpose. For an app that spreads props and API data around constantly, the friction
+outweighs the benefit. That is the judgement behind leaving it off. A library whose public
+types must distinguish "absent" from `undefined` may reasonably decide the other way.
+
+### `noImplicitReturns`
+
+Every code path in a function must return, or none may.
+
+```ts
+// @noImplicitReturns: true
+function sign(value: number): string | undefined { // Error: Not all code paths return a value
+  if (value > 0) return "positive";
+  if (value < 0) return "negative";
+}
+```
+
+### `noPropertyAccessFromIndexSignature`
+
+Forces `stock["berlin"]` instead of `stock.berlin` for index-signature keys, so a dictionary
+lookup looks different from a real property.
+
+```ts
+// @noPropertyAccessFromIndexSignature: true
+const stock: Record<string, number> = { berlin: 12 };
+const berlin = stock.berlin; // Error: property comes from an index signature, use ['berlin']
+```
+
+### `erasableSyntaxOnly`
+
+Rejects TypeScript syntax that cannot simply be deleted to get JavaScript: `enum`s,
+namespaces, and constructor parameter properties. Relevant if code runs directly under
+Node's built-in type stripping (*Enums & as const*).
+
+```ts
+// @erasableSyntaxOnly: true
+enum Color { // Error: enums are not erasable
+  Red,
+  Green,
+}
+
+class Point {
+  constructor(public x: number) {} // Error: parameter properties are not erasable
+}
+```
+
+## Adopting strictness in an existing codebase
+
+Turning on `strict` in a large project produces thousands of errors, and the temptation is to
+leave it. A workable path:
+
+1. **Start with the flags that are cheap**: `noImplicitThis`, `alwaysStrict`,
+   `strictBindCallApply`, `useUnknownInCatchVariables`.
+2. **Then `noImplicitAny`.** It forces you to write the types that document your boundaries.
+3. **Then `strictNullChecks`**, usually the biggest job, folder by folder.
+4. **Finally the opt-ins** you want.
+
+To go folder by folder, add a second config that extends the first and is strict for only the
+migrated folders, and run both in CI:
+
+```json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "strict": true },
+  "include": ["src/billing", "src/orders"]
+}
+```
+
+One catch, verified on a test project: **files imported by a strict file are checked strictly
+too.** A strict module that imports an un-migrated one reports that file's errors. Migrate
+**leaf modules first**, the ones nothing else depends on being loose, and work inward.
+
+### Suppressing a known error
+
+```ts
+// @ts-expect-error: the legacy SDK types `amount` as string, tracked in BILLING-212
+const amount: number = "19.99";
+```
+
+`@ts-expect-error` suppresses an error **and complains if there is nothing to suppress**:
+
+```ts
+// @ts-expect-error // Error: this line has no error, so the directive is unused
+const count: number = 5;
+```
+
+That makes it self-cleaning: when someone fixes the underlying problem, the stale directive
+fails the build. `@ts-ignore` suppresses silently forever, so prefer `@ts-expect-error` and
+always include a reason.
+
+## Common mistakes
+
+- **Enabling `strict` and then adding `// @ts-ignore` everywhere.** You get the noise
+  without the safety.
+- **Turning on `strictNullChecks` first in a big codebase**, drowning in errors.
+- **Using `!` or `as` to make null errors disappear** instead of handling the case.
+- **Copying a `tsconfig` from a blog** without knowing what each flag does.
+- **Thinking `strict` is final.** New versions may add flags to it.
+- **Enabling `exactOptionalPropertyTypes` without deciding how you will forward optional
+  values.**
+
+## Practice
+
+1. Run `npx tsc --showConfig` and list which of the nine `strict` flags are on in this
+   project, and which opt-ins.
+2. Take the `total(items)` example. Fix it so it compiles with `noImplicitAny` on, using a
+   real type rather than `any`.
+3. Turn on `noUnusedLocals` and `noUnusedParameters` in a scratch project and fix the errors
+   in a file of your own. Which fixes were deletions, and which were renames to `_name`?
+4. In a project of your own, decide whether `exactOptionalPropertyTypes` would help or hurt,
+   and write down the reason in one sentence.

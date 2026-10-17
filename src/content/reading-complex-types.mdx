@@ -1,0 +1,198 @@
+# Reading Complex Types
+
+## What
+
+You will meet types you did not write: in libraries, in a senior colleague's code, in the
+standard library. Some of them look like line noise. The good news is that nearly all
+complex types are built from a small set of pieces, and there is a reliable method for taking
+one apart.
+
+This page gives the method, then applies it to the real definitions inside your installed
+TypeScript.
+
+## The method
+
+1. **Find the outermost construct.** What is the top-level shape?
+   - `{ [K in ...]: ... }`: a **mapped type**
+   - `A extends B ? X : Y`: a **conditional type**
+   - `A | B` / `A & B`: a union / intersection
+   - `` `...${X}...` ``: a template literal
+   - `(args) => R` / `new (args) => R`: a function / constructor type
+2. **List the type parameters and their constraints.** What goes in, and what is it allowed to be?
+3. **Substitute a concrete type and evaluate by hand.** Replace `T` with something small like
+   `{ id: number; name: string }` and work it through step by step.
+4. **Read `infer` as a pattern match.** "If the input looks like *this*, call this part `X`."
+5. **Check for distribution.** A conditional whose checked type is a *bare* type parameter
+   distributes over unions (*Conditional Types & infer*).
+6. **Work inside-out.** Evaluate the innermost expression first, then the one around it.
+7. **Make the compiler show you** intermediate results (see the tools below).
+
+## Applying it: the real definitions
+
+These are copied from `node_modules/typescript/lib/lib.es5.d.ts` in this project. You already
+know what they do; now read *how*.
+
+```ts
+type Partial<T> = { [P in keyof T]?: T[P] };
+type Required<T> = { [P in keyof T]-?: T[P] };
+type Pick<T, K extends keyof T> = { [P in K]: T[P] };
+type Record<K extends keyof any, T> = { [P in K]: T };
+type Exclude<T, U> = T extends U ? never : T;
+type Extract<T, U> = T extends U ? T : never;
+type NonNullable<T> = T & {};
+type Parameters<T extends (...args: any) => any> = T extends (...args: infer P) => any ? P : never;
+type ReturnType<T extends (...args: any) => any> = T extends (...args: any) => infer R ? R : any;
+```
+
+Run the method on one of them. `Exclude<T, U>`:
+
+1. **Outermost:** a conditional type, `T extends U ? never : T`.
+2. **Parameters:** `T` (anything) and `U` (anything).
+3. **Substitute** `T = "a" | "b" | "c"` and `U = "a"`.
+4. **Distribution:** `T` is bare, so it is evaluated per member:
+   - `"a" extends "a" ? never : "a"` is `never`
+   - `"b" extends "a" ? never : "b"` is `"b"`
+   - `"c" extends "a" ? never : "c"` is `"c"`
+5. **Union the results:** `never | "b" | "c"` is `"b" | "c"`.
+
+Now something composed. `Omit` is defined in terms of two of the others:
+
+```ts
+type Omit<T, K extends keyof any> = Pick<T, Exclude<keyof T, K>>;
+```
+
+Work inside-out with `T = User` and `K = "passwordHash"`:
+
+| Step | Expression | Result |
+| ---- | ---------- | ------ |
+| 1 | `keyof User` | `"id" \| "name" \| "passwordHash"` |
+| 2 | `Exclude<keyof User, "passwordHash">` | `"id" \| "name"` |
+| 3 | `Pick<User, "id" \| "name">` | `{ id: number; name: string }` |
+
+And it explains something that surprised many readers of *Utility Types: Objects*: why
+`Omit<User, "pasword">` (a typo) does not error. The constraint is `K extends keyof any`,
+which means *any string, number or symbol*, not `keyof T`. With the typo, step 2 removes
+nothing, and the result is the full `User`.
+
+Contrast with `Pick<T, K extends keyof T>`, whose constraint *does* tie `K` to `T`'s keys, so
+a typo there is an error. Reading the constraint told you the behaviour.
+
+### A recursive one: `Awaited`
+
+```ts
+type Awaited<T> = T extends null | undefined
+  ? T
+  : T extends object & { then(onfulfilled: infer F, ...args: infer _): any }
+    ? F extends (value: infer V, ...args: infer _) => any
+      ? Awaited<V>
+      : never
+    : T;
+```
+
+(The real one has comments; this is the same logic.) Reading it:
+
+- **Top branch:** `null` or `undefined` pass through unchanged.
+- **Middle branch:** if `T` is an object with a `then` method, capture its first parameter as
+  `F`. That is how a Promise-like is recognised: by *shape*, not by name.
+- **Inner branch:** if `F` is a function, capture *its* first parameter as `V`: the value the
+  promise resolves with. Then call `Awaited<V>` **again**, which is why `Promise<Promise<string>>`
+  unwraps all the way down.
+- **Last branch:** anything else is returned as is.
+
+Three nested `infer`s, one recursive call, and it is a complete description of `await`.
+
+## Tools: make the compiler show you
+
+### Assign to `never`
+
+To find out what a type *is*, try to assign it to `never`. The error message prints it:
+
+```ts
+type Pair<A, B> = [A, B];
+type Inner<T> = T extends Pair<infer First, infer Second> ? { first: First; second: Second } : never;
+
+type Example = Inner<[string, number]>;
+
+declare const value: Example;
+const probe: never = value; // Error: the message names the type: { first: string; second: number; }
+```
+
+A throwaway line like this is often faster than hovering, and it works everywhere, including
+in a code review comment.
+
+### Flatten with a `Prettify` helper
+
+Intersections and nested aliases can display as a long chain. Re-mapping the type forces the
+compiler to print it as one plain object:
+
+```ts
+type Prettify<T> = { [K in keyof T]: T[K] } & {};
+
+type Timestamps = { createdAt: Date };
+type WithId<T> = T & { id: string };
+type Product = WithId<{ name: string }> & Timestamps;
+
+declare const product: Prettify<Product>;
+const flat: { name: string; id: string; createdAt: Date } = product; // assignable: same members
+```
+
+`Prettify` changes how a type is *displayed*; it does not change which values fit it.
+
+### Name the pieces
+
+If a type has an unreadable sub-expression, pull it out into an alias and give it a name.
+That is also the best fix when you are the author:
+
+```ts
+// Hard to read
+type Handlers<T> = {
+  [K in keyof T as T[K] extends (...args: never[]) => unknown ? `on${Capitalize<K & string>}` : never]: T[K];
+};
+
+// Readable: each step has a name
+type IsFunction<V> = V extends (...args: never[]) => unknown ? true : false;
+type HandlerName<K> = `on${Capitalize<K & string>}`;
+type HandlerKeys<T> = { [K in keyof T]: IsFunction<T[K]> extends true ? K : never }[keyof T];
+type HandlersReadable<T> = { [K in HandlerKeys<T> as HandlerName<K>]: T[K] };
+```
+
+### Other tools
+
+- **Go to Definition** on a utility type in your editor opens its definition in `lib.es5.d.ts`.
+  Read it there.
+- **Hover** on a type alias shows what the compiler resolved it to.
+- **`tsc --noErrorTruncation`** stops long types being cut off with `...` in error messages.
+- **Shrink the input.** Replace a huge real type with a three-field stand-in. If the type
+  behaves as expected on the small one, the complexity is in the details, not the idea.
+
+## Reading a library's types
+
+When you open a library's `.d.ts` file, expect:
+
+- **Overloads** (several `function f(...)` lines): the first one that matches wins, so read
+  from the top.
+- **Generics with defaults** (`<T = unknown>`): what the type becomes when nobody specifies it.
+- **Heavy use of `infer`** to derive one type from another. That is the library keeping
+  runtime and types in sync.
+- **`declare` and `namespace`** blocks, which describe global or merged things.
+
+You do not need to understand every line. Find the exported function you are calling,
+understand its parameters and return type, and treat the machinery behind them as an
+implementation detail, as you would the source of any function you call.
+
+## Common mistakes
+
+- **Trying to read left-to-right.** Types are often easiest inside-out.
+- **Forgetting distribution** and getting a surprising union out.
+- **Assuming a utility checks its keys.** Read the constraint (`keyof any` vs `keyof T`).
+- **Hovering only once.** Hover on each intermediate alias.
+- **Giving up on a long type** instead of substituting a small concrete one.
+
+## Practice
+
+1. Work `Extract<"a" | 1 | "b", string>` by hand using the method, then check with the
+   `never` probe.
+2. Read `ReturnType` from the list above. Why is its constraint `(...args: any) => any` while
+   the fallback branch returns `any`?
+3. Open `lib.es5.d.ts` (Go to Definition on `Partial`). Find `Uppercase` and `Capitalize` in
+   it. What does their implementation look like, and why?

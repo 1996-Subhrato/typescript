@@ -1,0 +1,180 @@
+# interface vs type in Practice
+
+## What
+
+*Type Aliases & Interfaces* introduced both and deferred the question of which to use. This
+page settles it with a rule you can apply in a few seconds, and shows the real behavioural
+differences that justify the rule, since most online arguments are about taste.
+
+For plain object shapes they are interchangeable:
+
+```ts
+interface UserInterface {
+  id: number;
+  name: string;
+}
+
+type UserType = {
+  id: number;
+  name: string;
+};
+
+const a: UserInterface = { id: 1, name: "Ada" };
+const b: UserType = a; // structurally identical, freely assignable
+```
+
+So the choice only matters at the edges. There are exactly five edges.
+
+## Edge 1: only `type` can name these
+
+Unions, tuples, primitives, function types, and anything computed from other types:
+
+```ts
+type Id = string | number; // union
+type Point = [x: number, y: number]; // tuple
+type Handler = (event: string) => void; // function type
+type Keys<T> = keyof T; // computed
+type Readonlyish<T> = { readonly [K in keyof T]: T[K] }; // mapped
+type Unwrapped<T> = T extends Promise<infer U> ? U : T; // conditional
+```
+
+There is no `interface` spelling for any of these. Whenever you need one, the choice is made
+for you.
+
+## Edge 2: only `interface` can be reopened (declaration merging)
+
+```ts
+interface Settings {
+  theme: string;
+}
+
+interface Settings {
+  language: string;
+}
+
+const settings: Settings = { theme: "dark", language: "en" }; // both members required
+```
+
+A `type` cannot be reopened. Declaring the same name twice is an error on both lines:
+
+```ts
+type Config = { debug: boolean }; // Error: Duplicate identifier 'Config'
+type Config = { verbose: boolean }; // Error: Duplicate identifier 'Config'
+```
+
+Merging is what makes it possible to extend someone else's type: adding `user` to Express's
+`Request`, or a property to `Window` (*Declaration Files & Augmentation*). In application
+code it is more often an accident than a feature.
+
+## Edge 3: how conflicts are handled
+
+Extending an object type with a property of an incompatible type behaves differently:
+
+```ts
+interface Base {
+  id: string;
+}
+
+interface Child extends Base { // Error: Interface 'Child' incorrectly extends interface 'Base'
+  id: number;
+}
+```
+
+With an intersection there is no error. The conflicting property just becomes `never`, a type
+with no values:
+
+```ts
+type Base = { id: string };
+type Child = Base & { id: number };
+
+declare const child: Child;
+const id: never = child.id; // `id` is `never`: no value can ever satisfy it
+```
+
+You find out about the `interface` conflict where you wrote it; you find out about the `type`
+one later, when something cannot be assigned. For hierarchies where a clash is a mistake,
+`interface ... extends` gives the earlier, clearer error.
+
+## Edge 4: `implements`
+
+A class can implement an `interface`, or a `type` that is a plain object type. It cannot
+implement a union:
+
+```ts
+type Shape = { kind: "circle"; radius: number } | { kind: "square"; size: number };
+
+class Widget implements Shape {} // Error: A class can only implement an object type or intersection of object types
+```
+
+## Edge 5: implicit index signatures
+
+An object-literal `type` is assignable to `Record<string, unknown>`; an `interface` is not:
+
+```ts
+interface UserInterface {
+  id: number;
+}
+type UserType = { id: number };
+
+declare const fromInterface: UserInterface;
+declare const fromType: UserType;
+
+const ok: Record<string, unknown> = fromType;
+const fails: Record<string, unknown> = fromInterface; // Error: Index signature is missing in type 'UserInterface'
+```
+
+This bites when you pass your own model types to generic helpers that accept
+`Record<string, unknown>` (loggers, serialisers, validation libraries). It is one reason
+data-shaped types are often `type` aliases.
+
+## What does not differ (despite the folklore)
+
+- **Both can be recursive**, generic, and optional-property-bearing.
+- **Both are erased** at runtime.
+- **Both are structural.** Neither is "nominal" in any way.
+- **Performance** is rarely a concern. The TypeScript team's own performance guidance does
+  suggest interfaces over long chains of intersections in very large codebases, because the
+  compiler caches interface relationships by name; for application code, you will not notice.
+
+## The rule
+
+Walk down the list and stop at the first match.
+
+1. **Is it a union, tuple, primitive alias, function type, mapped or conditional type?**
+   Use `type`. There is no choice.
+2. **Will it be extended by merging**, by a library consumer or your own augmentation, or
+   **implemented by a class as a public contract**? Use `interface`.
+3. **Do you want a mistaken property clash to be an error** when one object type extends
+   another? Use `interface ... extends`.
+4. **Will it be passed to code that expects an index signature** (`Record<string, unknown>`)?
+   Use `type`.
+5. **Otherwise,** use whichever your codebase already uses, and be consistent.
+
+The last line is the important one. A project that uses both arbitrarily is harder to read
+than one that picked either and stuck with it.
+
+### What this site does
+
+Following the same rule: behavioural contracts that something implements or depends on
+(`UserRepository`, `PaymentProcessor`, the navigation model in `src/types/docs.ts`) are
+`interface`s; unions, derived types and plain data shapes are `type`s. The two coexist because
+each has a reason, not by accident.
+
+## Common mistakes
+
+- **Treating it as a moral question.** For ordinary object shapes the choice is cosmetic.
+- **Using `interface` for a union** and discovering you cannot.
+- **Intersecting many object types** where one `interface ... extends` would be clearer and
+  would catch clashes.
+- **Accidental merging** from two same-named `interface` declarations in different files.
+- **Prefixing interfaces with `I`** (`IUser`). TypeScript does not need it, and it leaks an
+  implementation detail into a name.
+
+## Practice
+
+1. Take three types from a project of your own. For each, walk the rule and write down which
+   step decided it.
+2. Make `Child extends Base` with a conflicting property using `interface`, then with `&`.
+   Compare *when* and *where* the problem surfaces.
+3. Pass a model typed as an `interface` to a function taking `Record<string, unknown>`.
+   Change the declaration so it compiles, and decide whether that was the right fix.

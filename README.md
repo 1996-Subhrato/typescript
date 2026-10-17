@@ -41,11 +41,11 @@ full list is in [`ROADMAP.md`](./ROADMAP.md).
 | Node.js + Express | 6 | ✅ Complete |
 | Next.js + TypeScript | 5 | ✅ Complete |
 | Real-World API Typing | 6 | ✅ Complete |
-| TypeScript Configuration | 3 | ⏳ Next |
-| Professional TypeScript | 7 | ⏳ Next |
+| TypeScript Configuration | 3 | ✅ Complete |
+| Professional TypeScript | 7 | ✅ Complete |
 
-**54 of 64 topics published.** Unwritten topics appear greyed out in the sidebar so the
-whole path is visible up front.
+**All 64 topics are published.** The sidebar lists them in learning order, and the registry can still mark
+a topic as planned, in which case it appears greyed out so the whole path stays visible.
 
 ## Features
 

@@ -1,0 +1,242 @@
+# Paths, Interop & Output
+
+## What
+
+The options left after the language, module and strictness settings: **import aliases**,
+**compatibility with JavaScript modules**, **JavaScript files in a TypeScript project**, and
+**what `tsc` writes to disk**. Like the other configuration pages, every claim here was
+checked against TypeScript 5.9.3, either by compiling an example or by running `tsc` on a
+small fixture project.
+
+> Examples that start with a line like `// @esModuleInterop: false` set a compiler option
+> for that example only; the line is not part of the code.
+
+## Import aliases: `paths`
+
+```json
+{
+  "compilerOptions": {
+    "paths": { "@/*": ["./src/*"] }
+  }
+}
+```
+
+`import { double } from "@/lib/util"` now resolves to `src/lib/util.ts` when type-checking.
+
+- **`baseUrl` is not required.** Paths are resolved relative to the `tsconfig.json`. Tested
+  with only `paths` set: the alias resolved. (This repository sets `baseUrl: "."` as well; it
+  is redundant.)
+- **`paths` affects type-checking only.** It does **not** rewrite your imports. Compiling a
+  file that imports `"@/lib/util"` with `outDir` set emits:
+
+```text
+dist/app.js:  import { double } from "@/lib/util";
+```
+
+  The alias is still there. Something else has to resolve it at build or run time: a bundler
+  (Next.js and Vite read `paths` and do it for you), Node's own `imports` field in
+  `package.json`, or a post-processing tool. If `tsc` emits code that Node runs directly,
+  `paths` alone will fail at runtime with a module-not-found error.
+
+## Interop with CommonJS: `esModuleInterop`
+
+Many packages are CommonJS and use `module.exports = fn`. In ES module syntax, the natural way
+to import that is a default import. Whether TypeScript allows it depends on the settings.
+
+With CommonJS output and no interop flag, it is an error:
+
+```ts
+// @module: commonjs
+// @moduleResolution: node10
+// @verbatimModuleSyntax: false
+// @esModuleInterop: false
+import express from "express"; // Error: can only be default-imported using the 'esModuleInterop' flag
+
+export const app = express();
+```
+
+Turn the flag on and it compiles, with the right runtime helper emitted:
+
+```ts
+// @module: commonjs
+// @moduleResolution: node10
+// @verbatimModuleSyntax: false
+// @esModuleInterop: true
+import express from "express";
+
+export const app = express();
+```
+
+Under `moduleResolution: "bundler"` the same import is fine **even with the flag off**,
+because the bundler provides the interop and TypeScript assumes it:
+
+```ts
+// @esModuleInterop: false
+import express from "express";
+
+export const app = express();
+```
+
+Practical rule: **turn `esModuleInterop` on** in every new project. It is the behaviour all
+modern tooling assumes. (`allowSyntheticDefaultImports` is the type-only half: it permits the
+default import in type-checking without changing emit, and defaults to on when interop is on.)
+
+## `isolatedModules` and `verbatimModuleSyntax`
+
+Bundlers and transpilers (SWC, esbuild, Babel) compile **one file at a time**, without
+looking at other files. That works only if each file contains enough information to be
+compiled alone.
+
+`isolatedModules: true` reports code that cannot be compiled in isolation. The classic case is
+re-exporting a type, which looks identical to re-exporting a value unless you know what the
+other file contains:
+
+```ts
+// @isolatedModules: true
+// @verbatimModuleSyntax: false
+import { ReactNode } from "react";
+
+export { ReactNode }; // Error: Re-exporting a type requires 'export type' when isolatedModules is enabled
+```
+
+```ts
+// @isolatedModules: true
+// @verbatimModuleSyntax: false
+import type { ReactNode } from "react";
+
+export type { ReactNode };
+```
+
+`verbatimModuleSyntax` is the stricter, simpler rule: an import or export without `type` is
+always kept, and one with `type` is always removed. It makes the output predictable for any
+tool, and it is what this site uses (*Strictness Flags* shows its error).
+
+## JSON: `resolveJsonModule`
+
+Importing a `.json` file with a type needs this flag, **except** that `moduleResolution:
+"bundler"` (and `module: "preserve"`) turn it on for you. Under CommonJS-style resolution
+without it:
+
+```text
+import data from "./data.json";
+error TS2732: Cannot find module './data.json'. Consider using '--resolveJsonModule'
+to import module with '.json' extension.
+```
+
+With it on, the imported value is typed from the file's contents: `data.age` is a `number`, and
+assigning it to a `string` is an error.
+
+## JavaScript in a TypeScript project
+
+Two separate options:
+
+| Option | Effect |
+| ------ | ------ |
+| `allowJs` | Lets `.js` files be part of the program (imported, and emitted if you emit) |
+| `checkJs` | Also **type-checks** them, using JSDoc comments for types |
+
+`allowJs` alone does **not** check anything. Given this file:
+
+```js
+/** @param {number} x */
+function twice(x) { return x * 2; }
+twice("a");
+```
+
+the results, from running `tsc` four ways:
+
+```text
+allowJs only                       (no errors)
+allowJs + checkJs                  a.js(3,7): error TS2345: Argument of type 'string' is not
+                                   assignable to parameter of type 'number'.
+allowJs + "// @ts-check" in file   the same error (checking turned on for just that file)
+checkJs + "// @ts-nocheck" in file (no errors)           (checking turned off for that file)
+```
+
+So you can check JavaScript **file by file**, in either direction, without converting it.
+That is the basis of the migration path in *Migrating JavaScript to TypeScript*.
+
+## What `tsc` writes: emit options
+
+Most apps built by a bundler never emit with `tsc` (`noEmit: true`). Libraries and Node
+programs compiled by `tsc` do. Compiling one file with several options set produced:
+
+```text
+declaration + declarationMap + sourceMap, outDir: dist, rootDir: src
+
+dist/greet.js          the JavaScript
+dist/greet.js.map      source map: maps the JS back to your TypeScript for debuggers
+dist/greet.d.ts        declaration file: the types, for consumers of your library
+dist/greet.d.ts.map    maps the declaration back to the .ts source ("go to definition")
+```
+
+```ts
+export function greet(name: string): string {
+  return `Hi ${name}`;
+}
+```
+
+and `greet.d.ts` contains just:
+
+```ts
+export declare function greet(name: string): string;
+```
+
+| Option | Does |
+| ------ | ---- |
+| `outDir` / `rootDir` | Where output goes, and the root that its folder structure mirrors |
+| `sourceMap` | Emit `.js.map` so stack traces and debuggers show TypeScript |
+| `declaration` | Emit `.d.ts` files (needed to publish a typed library) |
+| `declarationMap` | Emit `.d.ts.map` |
+| `emitDeclarationOnly` | Emit only `.d.ts`, leaving the JavaScript to a bundler |
+| `noEmit` | Emit nothing; just check |
+| `incremental` | Cache build info so repeat runs are faster |
+
+`incremental` and `declaration` default to off. Their build-info file goes in `outDir` when
+you emit, or to the project root as `tsconfig.tsbuildinfo` when you do not.
+
+## Global types: `types` and `typeRoots`
+
+By default TypeScript loads **every** `@types/*` package it finds, making their globals
+available everywhere. Setting `"types": ["node"]` loads only those. This matters more than it
+looks: `@types/node` is large, declares globals like `process` and `Buffer`, and, as the
+`lib` examples in *tsconfig Essentials* showed, can pull in newer library declarations
+behind your back. A browser-only project usually should not load it.
+
+## A setup for each situation
+
+| | App built by a bundler | Library published to npm | Node service |
+| --- | --- | --- | --- |
+| `noEmit` | `true` | `false` | `false` (or a bundler) |
+| `declaration` | no | **yes** | no |
+| `sourceMap` | no (bundler does it) | yes | yes |
+| `module` / resolution | `esnext` / `bundler` | `nodenext` | `nodenext` |
+| `isolatedModules` / `verbatimModuleSyntax` | yes | yes | optional |
+| `paths` | fine | avoid | only with a runtime resolver |
+
+## This site's settings, explained
+
+`paths: { "@/*": ["./src/*"] }` (Next.js resolves it), `esModuleInterop: true`,
+`resolveJsonModule: true`, `isolatedModules: true`, `verbatimModuleSyntax: true`,
+`noEmit: true`, `incremental: true`, `skipLibCheck: true`. Two are redundant, as noted: the
+explicit `baseUrl` (not needed for `paths`) and `forceConsistentCasingInFileNames` (already
+`true` by default in this TypeScript version). `allowJs` could also go.
+
+## Common mistakes
+
+- **Expecting `paths` to rewrite imports** in emitted code.
+- **`esModuleInterop` off** in a CommonJS project, then fighting `import express from ...`.
+- **Re-exporting types without `type`** in a project that uses a bundler.
+- **Setting `allowJs` and assuming JavaScript is now checked.** That needs `checkJs`.
+- **Publishing a library without `declaration`**, leaving consumers with `any`.
+- **Committing generated output or `*.tsbuildinfo`.**
+- **Loading all `@types`** in a project that needs one or two.
+
+## Practice
+
+1. In a scratch project, set `outDir` and compile a file that imports through a `paths` alias.
+   Open the emitted JavaScript. What would you add to make it run under plain Node?
+2. Create a small `.js` file with a JSDoc type and a deliberate bug. Make `tsc` report it using
+   *only* a comment in the file, with `checkJs` off.
+3. Turn on `declaration` for a two-file library. Which of your functions have declarations that
+   mention a type you did not export, and what does TypeScript do about that?

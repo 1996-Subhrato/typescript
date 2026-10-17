@@ -99,21 +99,21 @@ Taught using this repository as the worked example.
 
 Only the options that change how you write code.
 
-1. **tsconfig Essentials** — `target`, `module`, `moduleResolution`, `lib`, `include`/`exclude`
-2. **Strictness Flags** — what `strict` turns on, `noImplicitAny`, `strictNullChecks`, `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`
-3. **Paths, Interop & Output** — `baseUrl`, `paths`, `esModuleInterop`, `allowJs`, source maps, declaration generation
+1. **tsconfig Essentials** — `target`, `module`, `moduleResolution`, `lib`, `include`/`exclude` ✅
+2. **Strictness Flags** — what `strict` turns on, `noImplicitAny`, `strictNullChecks`, `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters` ✅
+3. **Paths, Interop & Output** — `baseUrl`, `paths`, `esModuleInterop`, `allowJs`, source maps, declaration generation ✅
 
 ## Level 6 — Professional TypeScript · *Phase 9* · 7 topics
 
 Judgement calls rather than syntax.
 
-1. **interface vs type in Practice** — a decision rule, not a debate
-2. **Avoiding any** — acceptable escape hatches vs the ones that rot a codebase; `unknown` vs `any`
-3. **Designing Reusable Types** — composition, and knowing when to stop being clever
-4. **Reading Complex Types** — a method for decoding types someone else wrote
-5. **Understanding Compiler Errors** — reading long errors from the inside out
-6. **Migrating JavaScript to TypeScript** — an incremental strategy that does not stall
-7. **Anti-Patterns** — common mistakes worth unlearning early
+1. **interface vs type in Practice** — a decision rule, not a debate ✅
+2. **Avoiding any** — acceptable escape hatches vs the ones that rot a codebase; `unknown` vs `any` ✅
+3. **Designing Reusable Types** — composition, and knowing when to stop being clever ✅
+4. **Reading Complex Types** — a method for decoding types someone else wrote ✅
+5. **Understanding Compiler Errors** — reading long errors from the inside out ✅
+6. **Migrating JavaScript to TypeScript** — an incremental strategy that does not stall ✅
+7. **Anti-Patterns** — common mistakes worth unlearning early ✅
 
 ---
 

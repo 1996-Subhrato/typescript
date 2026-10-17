@@ -26,6 +26,11 @@ type MyExtract<T, U> = T extends U ? T : never;
 type Clean = MyNonNullable<string | null | undefined>; // string
 ```
 
+(`Exclude` and `Extract` are defined exactly like this in TypeScript's own library. The built-in
+`NonNullable<T>` is not: since TypeScript 4.8 it is written `T & {}`, which gives the same
+result for these cases. `MyNonNullable` is a conditional-type version to read and learn from,
+not a copy of the real one.)
+
 ## It distributes over unions
 
 When the checked type is a bare type parameter and you pass a union, TypeScript applies

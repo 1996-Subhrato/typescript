@@ -1,0 +1,266 @@
+# Migrating JavaScript to TypeScript
+
+## What
+
+Almost nobody gets to start from scratch. The usual situation is a working JavaScript
+codebase, a team that wants TypeScript, and no budget for a rewrite. The approach that works
+is **incremental**: the project builds and ships at every step, and each step makes it a little
+more checked. This page is that path, built from things that were each tested on a small
+project with TypeScript 5.9.3.
+
+> The golden rule: **never stop shipping.** A migration that needs a freeze, or a branch that
+> lives for months, tends to fail.
+
+## The path at a glance
+
+1. Add TypeScript to the build without changing any code.
+2. Start type-checking JavaScript files you have not renamed.
+3. Rename files to `.ts`, leaf modules first.
+4. Type your data before your functions.
+5. Deal with untyped dependencies.
+6. Raise the strictness, folder by folder.
+7. Replace the temporary escape hatches.
+
+## Step 1: wire TypeScript in
+
+```json
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "strict": false,
+    "target": "ES2022",
+    "module": "esnext",
+    "moduleResolution": "bundler"
+  },
+  "include": ["src"]
+}
+```
+
+Run `npx tsc`. With these settings it should report nothing, and that is the goal of the step:
+TypeScript is now part of the project and your JavaScript still works. Note that **`allowJs`
+alone checks nothing**: it only lets `.js` and `.ts` files import each other.
+
+## Step 2: check JavaScript without renaming it
+
+Two switches turn on checking for JavaScript, and they work in opposite directions:
+
+- **`checkJs: true`** checks every JavaScript file.
+- **`// @ts-check`** at the top of one file checks just that file. `// @ts-nocheck` opts one
+  file out when `checkJs` is on.
+
+You declare types with JSDoc comments, which TypeScript understands:
+
+```js
+// @ts-check
+
+/**
+ * @param {number} price
+ * @param {number} percent
+ * @returns {number}
+ */
+function applyDiscount(price, percent) {
+  return price * (1 - percent / 100);
+}
+
+applyDiscount(100, "20"); // TS2345: Argument of type 'string' is not assignable to parameter of type 'number'
+```
+
+This is useful on its own as a first pass, and it finds real bugs before a single rename. For
+files you will convert soon, though, skip it: the JSDoc you write is throwaway.
+
+## Step 3: rename, leaf modules first
+
+Start with files that **nothing else in the project depends on**, or that depend on little:
+utilities, constants, formatters. Rename `x.js` to `x.ts`, fix what the compiler says, commit.
+
+The order that works for most codebases:
+
+1. Pure utilities and constants
+2. Data models and shared types
+3. Services and data access
+4. Controllers, routes, components
+5. Tests (they exercise typed code, so they benefit from it, but they are not urgent)
+
+### What the first compile looks like
+
+Rename a file and the first message is almost always `implicit any`. Here is JavaScript from a
+shopping cart, renamed without any other change:
+
+```ts
+function addItem(cart, item, qty) { // Error: Parameters 'cart', 'item' and 'qty' implicitly have an 'any' type
+  const existing = cart.items.find((i) => i.sku === item.sku); // Error: Parameter 'i' implicitly has an 'any' type
+  if (existing) existing.qty += qty;
+  else cart.items.push({ sku: item.sku, price: item.price, qty });
+  cart.total = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0); // Error: Parameters 'sum' and 'i' implicitly have an 'any' type
+  return cart;
+}
+```
+
+Those errors come from the functions' signatures, which carry no information. The fix is to
+describe the data, which is Step 4.
+
+## Step 4: type the data first
+
+Types for the *things* (carts, users, orders) pay off everywhere. Types for individual
+functions follow from them almost for free.
+
+```ts
+type Item = { sku: string; price: number };
+type CartLine = { sku: string; price: number; qty: number };
+type Cart = { items: CartLine[]; total: number };
+
+function addItem(cart: Cart, item: Item, qty: number): Cart {
+  const existing = cart.items.find((line) => line.sku === item.sku);
+  if (existing) existing.qty += qty;
+  else cart.items.push({ sku: item.sku, price: item.price, qty });
+  cart.total = cart.items.reduce((sum, line) => sum + line.price * line.qty, 0);
+  return cart;
+}
+```
+
+Now every error disappears from the function, and the rest of the codebase can finally find
+out what is wrong with how it calls it. This is where migrations discover **real bugs**:
+
+```ts
+type Item = { sku: string; price: number };
+type CartLine = { sku: string; price: number; qty: number };
+type Cart = { items: CartLine[]; total: number };
+
+declare function addItem(cart: Cart, item: Item, qty: number): Cart;
+
+declare const query: Record<string, string | undefined>; // e.g. a parsed query string
+declare const cart: Cart;
+declare const item: Item;
+
+addItem(cart, item, query.qty); // Error: 'string | undefined' is not assignable to 'number'
+```
+
+In the JavaScript original, `qty` arrived as a *string* from the URL, and `existing.qty += qty`
+quietly turned `2 + "3"` into `"23"`. It had been shipping that way. The compiler found it
+by asking a question nobody had thought to ask: *is this a number?*
+
+The fix is to convert at the edge, deliberately:
+
+```ts
+function parseQuantity(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const quantity = Number(raw);
+  return Number.isInteger(quantity) && quantity > 0 ? quantity : undefined;
+}
+```
+
+### JavaScript habits TypeScript will question
+
+```ts
+const summary = {};
+summary.total = 0; // Error: Property 'total' does not exist on type '{}'
+
+const summaryFixed: { total: number } = { total: 0 };
+```
+
+Building an object by adding properties later is common in JavaScript. Declare its shape up
+front. Other recurring ones: arrays holding mixed types (use a union), functions that return
+different types on different paths (a union, or split the function), `module.exports` (use
+`export`), `PropTypes` (the TypeScript type replaces them), and reading `process.env`
+values as if they were always present (*Environment & Config*).
+
+## Step 5: untyped dependencies
+
+A package with no type information reports, once `noImplicitAny` is on:
+
+```text
+error TS7016: Could not find a declaration file for module 'untyped-lib'.
+  Try `npm i --save-dev @types/untyped-lib` if it exists or add a new declaration (.d.ts)
+  file containing `declare module 'untyped-lib';`
+```
+
+In order of preference:
+
+1. Install `@types/<package>` if it exists.
+2. Write a small declaration for the functions you use:
+
+   ```ts
+   declare module "untyped-lib" {
+     export function shout(text: string): string;
+   }
+   ```
+
+   Tested: this makes the error go away and gives you checked calls. (It lives in a `.d.ts`
+   file; see *Declaration Files & Augmentation*.)
+3. As a stopgap, `declare module "untyped-lib";` makes everything from it `any`. Track it.
+
+With `noImplicitAny` off the error does not appear at all, which is one reason to turn that
+flag on early.
+
+## Step 6: raise the strictness
+
+Turning on `strict` for the whole project on day one produces thousands of errors. Do it
+folder by folder with a second, stricter config:
+
+```json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "strict": true },
+  "include": ["src/billing", "src/orders"]
+}
+```
+
+Run both configs in CI. Add folders to `include` as they are cleaned up. One catch, verified:
+**files imported by a strict file are checked strictly too**, even if they are not in
+`include`. A strict module that imports a messy one reports the messy one's errors. Convert
+leaf modules first and work inward, and the list of strict folders can grow without
+surprises. The order in which to enable individual flags is in *Strictness Flags*.
+
+### A ratchet
+
+To stop the count of errors growing while you work, record it and fail if it goes up:
+
+```bash
+npx tsc --noEmit | grep -c "error TS"
+```
+
+Store the number in a file in the repository; CI compares. Lower it as you go. The same trick
+works for counting `any` and `@ts-expect-error` occurrences.
+
+## Step 7: retire the escape hatches
+
+During the migration you will leave temporary things behind. Keep them visible and countable:
+
+- Mark deferrals with `@ts-expect-error` and a ticket (it complains when the underlying
+  problem is fixed), never `@ts-ignore`.
+- Mark `any` with a comment saying why, and search for them regularly (*Avoiding any*).
+- Replace `as` casts with real validation at boundaries (*unknown at the Boundary*).
+
+The migration is not finished when the last file is renamed. It is finished when the
+escape hatches are gone.
+
+## What goes wrong
+
+- **The big bang.** Renaming everything at once and living on a long-lived branch.
+- **`any` everywhere to get to green.** You will have TypeScript syntax and no type safety, and
+  no one will remember which `any`s were temporary.
+- **Types that merely describe the existing mess.** If the JavaScript passes either a string
+  or a number for the same thing, fix that rather than typing both.
+- **Converting tests first.** They are the least valuable files to convert early.
+- **Trusting inferred types of external data** (JSON, `req.body`). Validate it.
+- **Automated conversion tools used as a finish line.** They can rename files and add
+  placeholder types, but the output is full of `any` and needs a real pass.
+
+## Common mistakes
+
+- **Expecting `allowJs` to check JavaScript.** It does not; `checkJs` or `@ts-check` does.
+- **Forgetting that imports pull files into a strict check.**
+- **Enabling `strictNullChecks` first** in a large codebase.
+- **Not tracking progress**, so the team cannot tell whether it is moving.
+- **Treating the migration as a one-person project.** Everyone writing new code must write it
+  in TypeScript from day one, or the pile never shrinks.
+
+## Practice
+
+1. Take a small JavaScript project of your own. Add `allowJs` and `checkJs` and read the list
+   of errors without fixing any. Which ones look like real bugs?
+2. Pick a leaf module, rename it to `.ts`, and type its data before its functions.
+3. Set up the second strict config for a single folder. Which file outside the folder showed
+   up in its error list, and why?

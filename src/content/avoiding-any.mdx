@@ -1,0 +1,209 @@
+# Avoiding any
+
+## What
+
+`any` is the type that turns type checking off. Used once, deliberately, it can unblock you.
+Used casually, it spreads, and a codebase full of it has TypeScript's syntax and none of its
+safety. This page is about recognising how `any` gets in, replacing it with something
+honest, and the small number of cases where it is acceptable.
+
+*any, unknown, never, void* introduced the types; here the focus is practice.
+
+## `any` spreads
+
+A value typed `any` can be used as anything, and so can everything derived from it.
+
+```ts
+function parse(json: string) {
+  return JSON.parse(json); // returns `any`, and so does `parse`
+}
+
+const order = parse('{"total": 40}');
+const doubled = order.total.toFixed(2).toUpperCase().nonsense(); // compiles
+const skus = order.items.map((item: { sku: string }) => item.sku); // compiles: this annotation is never checked against reality
+```
+
+Nothing here is checked, and nothing downstream is either. Even the callback annotation on the
+last line is a free-floating claim: the compiler cannot compare it with `order.items`, because
+`order` is `any`. A single `any` at the edge of the program silently disables checking for
+everything that touches it. (An unannotated callback there would be rejected, since `any`
+provides no type to infer from; people then "fix" it by writing a made-up annotation.)
+
+## Where `any` comes from
+
+| Source | Example | Visible? |
+| ------ | ------- | -------- |
+| Written explicitly | `function f(x: any)` | Yes |
+| `as any` | `data as any` | Yes |
+| **Standard library** | `JSON.parse`, `response.json()`, `Request.json()` | **No** |
+| **Implicit** | an unannotated parameter | Only with `noImplicitAny` |
+| **Untyped dependency** | a JS package with no declarations | Only with `noImplicitAny` (TS7016) |
+| Old `catch (e)` | before `useUnknownInCatchVariables` | No |
+
+The invisible ones matter most. You can have zero `any` in your source and still be
+surrounded by it.
+
+## Replace it with something honest
+
+For each common reason someone reaches for `any`, there is a precise alternative.
+
+### "I don't know the shape" -> `unknown`
+
+```ts
+function handle(payload: any) {
+  return payload.user.name.toUpperCase(); // compiles, may crash
+}
+
+function handleSafely(payload: unknown): string {
+  if (typeof payload !== "object" || payload === null || !("user" in payload)) return "";
+  const user = payload.user;
+  if (typeof user !== "object" || user === null || !("name" in user)) return "";
+  return typeof user.name === "string" ? user.name.toUpperCase() : "";
+}
+
+function bad(payload: unknown) {
+  return payload.user; // Error: 'payload' is of type 'unknown'
+}
+```
+
+### "Any object" -> a real constraint
+
+```ts
+// Record<string, any> lets you read and write anything
+function logAny(values: Record<string, any>) {
+  return values.id.nonsense;
+}
+
+// Record<string, unknown> keeps the checks
+function logUnknown(values: Record<string, unknown>) {
+  return values.id.nonsense; // Error: 'values.id' is of type 'unknown'
+}
+```
+
+### "Any function" -> a signature
+
+```ts
+function callAny(fn: any) {
+  return fn(1, 2, 3);
+}
+
+function callTyped(fn: (a: number, b: number) => number): number {
+  return fn(1, 2);
+}
+
+callTyped((a, b) => a + b);
+callTyped((a: string) => a); // Error: a string function is not a (number, number) function
+```
+
+When you genuinely need "any function", say it without `any`: `(...args: never[]) => unknown`
+accepts every function (*Utility Types: Unions & Functions* uses it).
+
+### "Any array" -> a generic
+
+```ts
+function firstAny(items: any[]): any {
+  return items[0];
+}
+
+function first<T>(items: readonly T[]): T | undefined {
+  return items[0];
+}
+
+const name = first(["Ada", "Grace"]); // string | undefined
+```
+
+### "It's JSON" -> `unknown` and a check
+
+```ts
+const loose = JSON.parse('{"id": 1}'); // any
+const careful: unknown = JSON.parse('{"id": 1}'); // unknown, must be checked before use
+```
+
+Then validate it (*unknown at the Boundary*).
+
+### "This library has no types" -> a small declaration
+
+```ts
+// legacy-pricing.d.ts has not been written yet; this is the stand-in
+declare function price(sku: string, quantity: number): number;
+
+const total: number = price("kb-01", 2);
+price(42, 2); // Error: 'number' is not assignable to 'string'
+```
+
+Declare only the functions you use (*Declaration Files & Augmentation*). A ten-line stub is
+far better than an `any` module.
+
+### "I'll type it properly later" -> say so out loud
+
+If you must defer, make the debt visible and self-cleaning:
+
+```ts
+// @ts-expect-error: waiting on the SDK upgrade, tracked in PLAT-1031
+const amount: number = legacyClient.getAmount();
+
+declare const legacyClient: { getAmount(): string };
+```
+
+The directive reports an error the moment the underlying problem disappears, unlike `any`,
+which never tells you it is now unnecessary.
+
+## When `any` is acceptable
+
+Rarely, and with a comment explaining why:
+
+- **Type-level plumbing**, where a generic constraint must accept every function or class
+  (the standard library's own `ReturnType<T extends (...args: any) => any>`). Prefer `never`
+  parameters where they work.
+- **Test code** that builds deliberately malformed input to check validation.
+- **A short-lived migration shim**, listed and counted (*Migrating JavaScript to
+  TypeScript*).
+- **Genuinely dynamic interop** where the shape is truly open.
+
+What these have in common is that the `any` is *contained*: it does not become the type of
+anything that flows onward.
+
+## What this project's linter catches
+
+Running ESLint with this repository's configuration over a file of common offences, the
+results were:
+
+| Offence | Caught? |
+| ------- | ------- |
+| `: any`, `as any`, `Record<string, any>` | **Yes** (`no-explicit-any`) |
+| `@ts-ignore` | **Yes** (`ban-ts-comment`) |
+| `Function` type | **Yes** (`no-unsafe-function-type`) |
+| `{}` and `Object` types | **Yes** (`no-empty-object-type`, `no-wrapper-object-types`) |
+| `x!` non-null assertion | No |
+| `x as string`, `x as unknown as T` | No |
+| A promise created and never awaited | No |
+
+The loud forms of `any` are covered. The quiet ones (assertions, `!`, and the invisible `any`
+from the standard library) are not. `typescript-eslint` offers stricter presets that add rules
+for those, including type-aware rules such as `no-unsafe-assignment` and
+`no-unsafe-member-access`, which flag `any` flowing through your code. They are slower and
+noisier, and often worth it.
+
+## Common mistakes
+
+- **`as any` to get past an error.** The error is information; find out what it says.
+- **`any` in a parameter or return type.** Those are the contract; make them real.
+- **`Promise<any>`** for a fetch helper (*A Generic API Client* shows the alternative).
+- **Replacing `any` with `{}` or `Object`**, which are different problems.
+- **Disabling the lint rule file-wide** instead of justifying a single line.
+- **Believing "no `any` in my code" means "no `any` in my program".** Check the sources.
+
+## Practice
+
+1. Rewrite each of these without `any`:
+
+   ```ts
+   function merge(a: any, b: any): any { return { ...a, ...b }; }
+   const cache: Record<string, any> = {};
+   function onEvent(handler: Function) { handler(); }
+   ```
+
+2. Search a project of your own for `: any` and `as any`. Group the results into the
+   categories above. Which ones had a better type available?
+3. `JSON.parse` returns `any`. Write a small `parseJson(text: string): unknown` wrapper and
+   use it everywhere instead.

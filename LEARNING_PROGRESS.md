@@ -9,16 +9,16 @@
 
 ## Current Phase
 
-**Phase 8 — Real-World API Typing** &nbsp;·&nbsp; Status: ✅ **Complete**
+**Phase 9 — Config + Professional** &nbsp;·&nbsp; Status: ✅ **Complete**
 
 ## Current Topic
 
-None in progress. Everything except Config + Professional (Phase 9) and the Phase 10 review is written.
+None in progress. **All 64 topics are written and published.** Only Phase 10 (review, exercises, capstone) remains.
 
 ## Current Status
 
-Phase 8 is complete, verified and committed. Awaiting user go-ahead to begin **Phase 9 — Config + Professional**.
-Default behaviour: **one phase per request, then stop**, unless the user explicitly asks for more.
+Phase 9 is complete, verified and committed. Awaiting user go-ahead to begin **Phase 10 — Review, Exercises & Capstone**,
+the final phase. Default behaviour: **one phase per request, then stop**, unless the user explicitly asks for more.
 
 ---
 
@@ -203,56 +203,90 @@ transform / key stripping / `.strict()` rejection, and the exact message `"email
 assertions) was replaced with a real `isFieldErrors` guard; the covariance sentence in pagination was corrected after a probe
 showed mutable arrays are also assignable (unsoundly).
 
+### Phase 9 — Config + Professional ✅
+
+Ten topics written; **every topic in the registry is now published (64 / 64)**:
+`tsconfig-essentials`, `strictness-flags`, `paths-and-output` (Level 5) and `interface-vs-type`, `avoiding-any`,
+`designing-types`, `reading-complex-types`, `compiler-errors`, `migrating-js-to-ts`, `anti-patterns` (Level 6).
+
+**Tooling first (commit `152cb6a`):** per-block compiler options — a block may start with `// @option: value` lines
+(TypeScript's own test-suite convention). Blocks are grouped by distinct option set, one `tsc` run each; names and values are
+validated through TypeScript's own option parser (unknown option / bad value -> `BAD DIRECTIVE`); lists are comma separated,
+`// @types:` clears a list, `default` removes a base option. Mutation-tested. This let `strictness-flags` compile **31 blocks
+across 15 option sets**, every flag shown on AND off.
+
+**Config claims were measured, not recalled** (TypeScript 5.9.3): `strict` is exactly nine flags (read from the compiler,
+includes `strictBuiltinIteratorReturn`); defaults read from the compiler's own option declarations; ~25 fixture projects run
+for module resolution, `paths` (type-check only; NOT rewritten in emit; `baseUrl` not required), `esModuleInterop`,
+`isolatedModules`, `verbatimModuleSyntax`, `allowJs` / `checkJs` / `@ts-check` / `@ts-nocheck`, emit files, `target`
+down-levelling, `jsx` modes, `exclude` (does not stop imports), `extends` merging, and the strict-subset config technique.
+Error codes and messages on `compiler-errors` were captured from real runs.
+
+**Findings worth remembering (all verified):**
+- With `@types/node` loaded, `lib: es2015` restricts nothing (it pulls newer lib declarations in); clear `types` to test `lib`.
+- With `target: ES2020` and no `module`, `tsc --showConfig` resolves `module: es6` + `moduleResolution: classic`. Never rely on defaults.
+- `.js` extensions on relative imports are required under `nodenext` ONLY for ES-module files (package `"type": "module"`).
+- Files imported by a strict file are checked strictly too, so migrate leaf modules first.
+- Built-in `NonNullable<T>` is `T & {}` (not a conditional type); `Omit<T, K extends keyof any>` accepts any key, which is exactly why
+  a typo in `Omit` is silently accepted (read from `lib.es5.d.ts`).
+- This repo's ESLint catches `any`, `@ts-ignore`, `Function`, `{}`, `Object`, namespaces, `var` — and does NOT catch `!`, `as`,
+  `as unknown as`, enums or floating promises.
+- This repo's ESLint flags an unused `_a` parameter that TypeScript itself exempts.
+
+**Promises kept:** decision #6 (`exactOptionalPropertyTypes` — now explained, with a React-forwarding and a Zod demo of the friction),
+`type-aliases-and-interfaces` -> *interface vs type in Practice*, `nextjs-config` -> *tsconfig Essentials*, the repo's own tsconfig
+comment ("See docs Level 5").
+
+**Honest notes recorded in the content:** `allowJs`, `baseUrl` and `forceConsistentCasingInFileNames` in this repo's `tsconfig.json`
+are redundant/leftover.
+
+**Corrections made during the phase:** a wrong "item is any too" claim (an `any` receiver gives callbacks no contextual type, so
+`noImplicitAny` rejects them); two mis-placed error markers; a `NonNullable` accuracy note added to *Conditional Types*; a lint-vs-
+compiler note on unused parameters.
+
 ---
 
 ## Pending Phases
 
 | Phase | Name | Topics | Notes |
 | ----- | ---- | ------ | ----- |
-| 9 | Config + Professional | 10 | Config (3) + Professional (7) |
 | 10 | Review, Exercises & Capstone | — | Exercise pages, search polish, final pass |
 
 Full topic list: [`ROADMAP.md`](./ROADMAP.md). Machine-readable version: `src/lib/registry.ts`.
 
-**Content progress: 54 / 64 topics published** (Levels 1-3: 30/30 · React 7/7 · Node/Express 6/6 · Next.js 5/5 · API typing 6/6 · Config 0/3 · Professional 0/7).
+**Content progress: 64 / 64 topics published** (every level complete).
 
 ---
 
 ## Next Topic
 
-**Phase 9 — Config + Professional.** Ten topics (Level 5: 3, Level 6: 7), in registry order. **Split into 9a (config) and 9b (professional)
-if it runs long** — they are independent, and 9a needs tooling work first.
+**Phase 10 — Review, Exercises & Capstone.** The final phase. No new language topics; it turns 64 reference pages into a finished course.
+Suggested scope (confirm with the user before starting; split into 10a/10b if long):
 
-**9a — TypeScript Configuration**
-1. `tsconfig-essentials` — `target`, `module`, `moduleResolution` (`bundler` vs `node16`/`nodenext`), `lib`, `jsx`, `include` / `exclude`, `noEmit`; walk through THIS repo's `tsconfig.json`
-2. `strictness-flags` — what `strict` turns on (`noImplicitAny`, `strictNullChecks`, `strictFunctionTypes`, `strictBindCallApply`, `strictPropertyInitialization`, `useUnknownInCatchVariables`, `alwaysStrict`, `noImplicitThis`), plus `noUncheckedIndexedAccess`, `noUnusedLocals` / `noUnusedParameters`, `noImplicitOverride`, `noFallthroughCasesInSwitch`, `verbatimModuleSyntax`, and **`exactOptionalPropertyTypes`** (promised since decision #6 — finally explain why it is off here); adopting strictness incrementally
-3. `paths-and-output` — `baseUrl`, `paths`, `esModuleInterop`, `allowJs` / `checkJs`, `sourceMap`, `declaration`, `isolatedModules`, `skipLibCheck`, `resolveJsonModule`
+**10a — Quality and consistency (do first; mostly tooling)**
+1. **Cross-reference checker.** Pages cite each other by italic title (`*Narrowing*`, `*A Generic API Client*`). Add a check to
+   `scripts/` that every italic reference matching a topic-like phrase resolves to a real registry title, and report dead or renamed ones.
+   Consider turning verified references into real links.
+2. **Forward-reference audit.** Every "covered later / in the next topic" promise should now point at an existing page. Sweep for stale wording
+   (e.g. "later in this level").
+3. **Search upgrade.** Search currently matches titles and summaries only. Build a build-time index of headings and text so it finds `keyof`,
+   `satisfies`, `TS2345`, etc. Keep it client-side and small; test it.
+4. **README and ROADMAP final pass**, plus `LEARNING_PROGRESS.md` cleanup (it has grown long: archive per-phase detail if useful).
 
-**9b — Professional TypeScript**
-4. `interface-vs-type` (a decision rule; settle the question `type-aliases-and-interfaces` deferred) · 5. `avoiding-any` · 6. `designing-types` ·
-7. `reading-complex-types` · 8. `compiler-errors` · 9. `migrating-js-to-ts` · 10. `anti-patterns`
+**10b — Exercises and capstone**
+5. **Exercises index.** Every topic ends with a *Practice* section and NO solutions (by design). Build an exercises page grouped by level, with
+   difficulty and links back to the topic. Do not add solutions unless the user asks; collect the user's attempts first (see Exercise Log).
+6. **Capstone project.** A guided, multi-step build that uses the whole course (suggestion: a small typed "orders" app — shared contract, typed
+   client, validated route handler, React state as a discriminated union, strict tsconfig). Every code block must pass `npm run check:content`;
+   use the repo's existing conventions. Offer it as a separate section, not a registry level, unless the user wants otherwise.
+7. **Optional polish:** dark-mode toggle (currently follows the OS), per-page "last verified with TypeScript X" note, print styles.
 
-**TOOLING TO BUILD FIRST (9a):** the strictness topics need blocks compiled WITH A FLAG ON and then OFF (e.g. `exactOptionalPropertyTypes`,
-`strictNullChecks: false`). The gate currently uses one fixed option set. Add per-block options via leading directive comments, as TypeScript's own
-test harness does (`// @exactOptionalPropertyTypes: true`), grouping blocks by distinct option set into one `tsc` run each; unknown directives must
-fail loudly. Cover it with a mutation test like the others. Verify every config claim by running `tsc` with that exact option, and use
-`tsc --showConfig` / `tsc --help --all` against the installed TypeScript 5.9.3 rather than memory. ```jsonc fences are not compiled — back each
-config claim with a compiled demonstration. Mark any `exactOptionalPropertyTypes` demo clearly: it is OFF in this repo.
-
-**Process per topic:** write `src/content/<slug>.mdx`, `npm run check:content -- <slug>`, publish at the end of the phase, then `typecheck` /
-`lint` / `check:content` / `build` / `check:pages`, update docs (README, ROADMAP, this file), commit.
-
-### Later phases at a glance
-
-| Phase | Topics |
-| ----- | ------ |
-| 10 Review & Capstone | Consolidated exercises (all Practice sections, graded), a capstone project, search polish, final consistency pass (topic order, forward references, README) |
+**Still unverified and needs the USER's eyes:** TOC scroll-spy highlighting (never seen working — the preview pane cannot render it), and the
+visual design on a real screen.
 
 ### Open forward references
 
-`type-aliases-and-interfaces` → *interface vs type in Practice* · `nextjs-config` (tsconfig pieces) → *tsconfig Essentials* ·
-`strictness-flags` must explain `exactOptionalPropertyTypes` (decision #6) · `database-models` / `typing-api-responses` mention OpenAPI
-generators and tRPC lightly — `migrating-js-to-ts` and `designing-types` may point back.
+None known. (Verify with the cross-reference checker above.)
 
 ---
 
@@ -393,6 +427,17 @@ show an idiomatic solution. Phase 10 should consolidate these into a graded set.
 29. **Error values over error strings.** *(Phase 8)* One `ApiError` discriminated union carries every failure (network, HTTP, validation, malformed
     body); handled with exhaustive `switch` + `assertNever`; error bodies are parsed from `unknown` and unknown codes degrade to `unexpected`.
 
+30. **Measure configuration, never recall it.** *(Phase 9)* TypeScript's defaults change between versions and several are surprising. Every
+    config claim was checked with `tsc --showConfig`, fixture projects, or the compiler's own option declarations (`ts.optionDeclarations`)
+    against the installed version. State the version in the page. Keep fixture runs out of the repo (scratch in `node_modules/.cache`, deleted).
+
+31. **Per-block options use `// @option: value`.** *(Phase 9)* The directive lines stay visible in the rendered block and each page that uses them
+    explains the convention once. Always clear `types` (`// @types:`) when testing `lib`/`target`, because `@types/node` re-adds libs.
+
+32. **Lint findings are evidence about this repo, not about TypeScript in general.** *(Phase 9)* `avoiding-any` and `anti-patterns` state which rules
+    THIS repo's ESLint enforces, measured by linting a file of offences. Rule names beyond those measured are described as "available in
+    typescript-eslint's stricter presets", not as active here.
+
 ---
 
 ## Project Architecture
@@ -409,7 +454,7 @@ D:\TypeScript
 │   │       └── [slug]/page.tsx  # Renders one MDX topic + TOC + prev/next
 │   ├── components/              # SiteHeader, Sidebar, MobileNav, Search,
 │   │                            # TableOfContents, PrevNextNav, CodeBlock
-│   ├── content/                 # 54 MDX topics — one file per registry slug
+│   ├── content/                 # 64 MDX topics — one file per registry slug
 │   ├── lib/
 │   │   ├── registry.ts          # Source of truth: levels, topics, order, status
 │   │   ├── docs.ts              # Derived helpers — SAFE for client components
@@ -452,13 +497,13 @@ failing line; use ```` ```js ```` for JavaScript, which is not compiled.
 
 ## Last Development Work
 
-Phase 8 — Real-World API Typing (6 topics).
+Phase 9 — Config + Professional (10 topics), plus a tooling commit before it. **The registry is now fully published.**
 
-**Verification (all green):** `typecheck` · `lint` · `check:content` -> 54 topics · 394 blocks · 6 skipped · 133/133 claimed errors real · 0 problems ·
-`build` -> 58 static pages · `check:pages` -> all 54 pages OK. No React in this phase, so no hooks-lint pass was needed.
+**Verification (all green):** `typecheck` · `lint` · `check:content` -> 64 topics · 498 blocks · 23 option sets · 6 skipped · 192/192 claimed errors
+real · 0 problems · `build` -> 68 static pages · `check:pages` -> all 64 pages OK.
 
-**Probes:** contract/pagination types asserted exactly; Zod behaviour and `iterateAll` / `withQuery` executed. **Corrections before publishing:** an assertion
-inside the error-body parser replaced by a real guard; the covariance sentence made precise.
+**Probes:** ~25 config fixtures; error codes/messages captured from real runs; 8 type-level `Equal` assertions on `reading-complex-types` (incl. the
+dense vs readable `Handlers` equivalence, `Awaited` nesting, the `Omit` typo case); a repo-lint probe of common offences; a strict-subset migration fixture.
 
 ---
 
@@ -481,11 +526,12 @@ inside the error-body parser replaced by a real guard; the covariance sentence m
 
 ## Next Recommended Action
 
-1. Run the site (`npm run dev`) and read `unknown-at-the-boundary`, `api-contract-modelling` and `api-error-modelling` — the three that tie Levels 3-6 together.
-2. **Attempt the Practice sections** (the `call` / contract ones are the hardest) and share them; I will review before showing solutions.
-3. Run the checks yourself: `npm run typecheck && npm run lint && npm run check:content && npm run build`.
-4. Push when ready: `git push -u origin main` (nothing has been pushed; 10 commits since the baseline).
-5. Say **"start Phase 9"** for Config + Professional (I will build the per-block compiler-options tooling first).
+1. Run the site (`npm run dev`) and read `strictness-flags`, `compiler-errors` and `migrating-js-to-ts` — the three most practical for daily work.
+2. **Scroll a long page and tell me whether the right-hand table of contents highlights the current section** — it is the one feature never seen working.
+3. **Attempt Practice sections** from any level and share them; I will review them before showing solutions. (None have been submitted yet.)
+4. Run the checks yourself: `npm run typecheck && npm run lint && npm run check:content && npm run build`.
+5. Push when ready: `git push` (Phase 8 and later are local only).
+6. Say **"start Phase 10"** for the review, exercises and capstone.
 
 ---
 
@@ -505,3 +551,5 @@ inside the error-body parser replaced by a real guard; the covariance sentence m
 | 2026-10-17 | 6 | 6 Node/Express topics; Express 5 typings verified from source; Zod behaviour executed; prose lint made paragraph-aware. |
 | 2026-10-17 | 7 | 5 Next.js topics; bundled Next 16.3.1 docs read first; useActionState inference corrected by probe; React-hooks lint pass. |
 | 2026-10-17 | 8 | 6 API-typing topics; contract + pagination types asserted with Equal probes; Zod, query-builder and async-generator behaviour executed; one assertion replaced by a real guard. |
+| 2026-10-17 | - | Tooling: per-block compiler options via `// @option: value` (mutation-tested). Commit `152cb6a`. |
+| 2026-10-17 | 9 | 10 Config + Professional topics; every config claim measured on TS 5.9.3; error messages captured from real runs; **all 64 topics published**. |

@@ -131,9 +131,9 @@ export const levels = [
     summary: "Only the tsconfig options that change how you write code.",
     difficulty: "intermediate",
     topics: [
-      { slug: "tsconfig-essentials", title: "tsconfig Essentials", summary: "target, module, moduleResolution, lib, include/exclude.", status: "planned" },
-      { slug: "strictness-flags", title: "Strictness Flags", summary: "What strict turns on, plus noUncheckedIndexedAccess and friends.", status: "planned" },
-      { slug: "paths-and-output", title: "Paths, Interop and Output", summary: "baseUrl, paths, esModuleInterop, source maps, declarations.", status: "planned" },
+      { slug: "tsconfig-essentials", title: "tsconfig Essentials", summary: "target, module, moduleResolution, lib, include/exclude.", status: "published" },
+      { slug: "strictness-flags", title: "Strictness Flags", summary: "What strict turns on, plus noUncheckedIndexedAccess and friends.", status: "published" },
+      { slug: "paths-and-output", title: "Paths, Interop and Output", summary: "baseUrl, paths, esModuleInterop, source maps, declarations.", status: "published" },
     ],
   },
   {
@@ -142,13 +142,13 @@ export const levels = [
     summary: "Judgement calls: what experienced TypeScript developers do differently.",
     difficulty: "advanced",
     topics: [
-      { slug: "interface-vs-type", title: "interface vs type in Practice", summary: "A decision rule, not a debate.", status: "planned" },
-      { slug: "avoiding-any", title: "Avoiding any", summary: "The escape hatches that are fine, and the ones that rot a codebase.", status: "planned" },
-      { slug: "designing-types", title: "Designing Reusable Types", summary: "Composition, and knowing when to stop being clever.", status: "planned" },
-      { slug: "reading-complex-types", title: "Reading Complex Types", summary: "A method for decoding types someone else wrote.", status: "planned" },
-      { slug: "compiler-errors", title: "Understanding Compiler Errors", summary: "Reading long errors from the inside out.", status: "planned" },
-      { slug: "migrating-js-to-ts", title: "Migrating JavaScript to TypeScript", summary: "An incremental strategy that does not stall.", status: "planned" },
-      { slug: "anti-patterns", title: "Anti-Patterns", summary: "Common TypeScript mistakes worth unlearning early.", status: "planned" },
+      { slug: "interface-vs-type", title: "interface vs type in Practice", summary: "A decision rule, not a debate.", status: "published" },
+      { slug: "avoiding-any", title: "Avoiding any", summary: "The escape hatches that are fine, and the ones that rot a codebase.", status: "published" },
+      { slug: "designing-types", title: "Designing Reusable Types", summary: "Composition, and knowing when to stop being clever.", status: "published" },
+      { slug: "reading-complex-types", title: "Reading Complex Types", summary: "A method for decoding types someone else wrote.", status: "published" },
+      { slug: "compiler-errors", title: "Understanding Compiler Errors", summary: "Reading long errors from the inside out.", status: "published" },
+      { slug: "migrating-js-to-ts", title: "Migrating JavaScript to TypeScript", summary: "An incremental strategy that does not stall.", status: "published" },
+      { slug: "anti-patterns", title: "Anti-Patterns", summary: "Common TypeScript mistakes worth unlearning early.", status: "published" },
     ],
   },
 ] as const satisfies readonly DocLevel[];

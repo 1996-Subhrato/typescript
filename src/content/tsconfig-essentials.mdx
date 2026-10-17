@@ -1,0 +1,259 @@
+# tsconfig Essentials
+
+## What
+
+`tsconfig.json` tells the compiler **which files** belong to the project and **how** to
+treat them. It is read by `tsc`, by your editor, and by most tools that process
+TypeScript. There are well over a hundred options; a handful decide almost everything.
+
+> Everything on this page was checked against the TypeScript version installed in this
+> project (5.9.3). Where output is quoted, it was captured from a real `tsc` run on a tiny
+> fixture project. Defaults change between TypeScript versions, so the habit to learn is
+> *asking the compiler*, not remembering.
+
+## Three commands worth knowing
+
+```bash
+npx tsc --showConfig
+```
+
+Prints the **effective** configuration after `extends` and defaults are applied. When behaviour
+surprises you, start here.
+
+```bash
+npx tsc --listFilesOnly
+```
+
+Lists every file the compiler would include, whatever the reason. Add `--explainFiles` to
+see *why* each one is there.
+
+```bash
+npx tsc --init
+```
+
+Creates a starter `tsconfig.json`. Treat its output as a draft: it reflects general defaults,
+not your build tool.
+
+## Which files are in the project
+
+| Option | Role |
+| ------ | ---- |
+| `files` | An explicit list. Rarely used |
+| `include` | Glob patterns for the starting set of files |
+| `exclude` | Patterns removed from the **starting set** only |
+| `extends` | Inherit options from another config |
+
+### `exclude` does not stop imports
+
+This surprises almost everyone. If an included file imports an excluded one, the compiler
+still loads it. With `include: ["src"]` and `exclude: ["src/skip.ts"]`, where `app.ts`
+imports `./skip`:
+
+```text
+$ tsc --listFilesOnly
+.../src/skip.ts      <- still here: app.ts imports it
+.../src/app.ts
+.../src/other.ts
+```
+
+`exclude` only trims what the globs pick up. To keep a file out of the program, nothing may
+import it.
+
+### `extends`, and a trap with defaults
+
+```json
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": { "target": "ES2020", "noUnusedLocals": true },
+  "include": ["src"]
+}
+```
+
+Options in the child override the base; `include` and `files` in the child **replace** the
+base's rather than merging. Run `--showConfig` on a config like this, where the base sets
+`strict` and `target` but never mentions `module`, and you get:
+
+```text
+"target": "es2020",
+"module": "es6",
+"moduleResolution": "classic",
+```
+
+`classic` is an obsolete module resolution strategy kept for compatibility. Nothing was
+misconfigured here; the *defaults* chose it. Set `module` and `moduleResolution`
+**explicitly**, always.
+
+## The language: `target` and `lib`
+
+Two options that sound similar do different jobs:
+
+- **`target`** decides which JavaScript *syntax* may appear in the output. Newer syntax is
+  rewritten for older targets.
+- **`lib`** decides which built-in *types* exist: `Map`, `Array.prototype.includes`,
+  `document`.
+
+Captured from `transpileModule` on the same input at three targets:
+
+```text
+target ES5     var f = function (x) { return x !== null && x !== void 0 ? x : 1; };
+target ES2019  const f = (x) => x !== null && x !== void 0 ? x : 1;
+target ES2022  const f = (x) => x ?? 1;
+```
+
+At ES2022 the `??` and the `#private` field syntax are left alone; at older targets they are
+rewritten into longer, slower equivalents. Choose the **lowest target your runtime supports**
+and no lower.
+
+When you do not set `lib`, the target picks a default set that includes `dom`. Setting `lib`
+replaces that default.
+
+### Demonstrations
+
+The first line of each example below, `// @lib: ...`, is not part of the code. It sets a
+compiler option for that example only, so the same file can be checked under different
+settings. (It is the convention TypeScript's own test suite uses.)
+
+Without the DOM library there is no `document`:
+
+```ts
+// @lib: ES2022
+const title = document.title; // Error: Cannot find name 'document'
+```
+
+With the default `lib` for the target, there is:
+
+```ts
+// @lib: default
+const title = document.title;
+```
+
+`lib` controls which APIs exist:
+
+```ts
+// @lib: es2015
+// @types:
+const found = [1, 2, 3].includes(2); // Error: 'includes' needs the ES2016 library
+```
+
+And a very old target without a newer `lib` cannot even see `Map`:
+
+```ts
+// @target: ES5
+// @lib: default
+// @types:
+const lookup = new Map<string, number>(); // Error: Cannot find name 'Map'
+```
+
+Notice the `// @types:` line in the last two. It clears `types`, and that matters: with
+`@types/node` installed, **the `lib` restriction silently stops working**, because
+`@types/node` pulls newer library declarations in for itself. If you set `lib: ["es2015"]`
+and `Array.prototype.includes` still type-checks, look at `types`.
+
+## Modules: `module` and `moduleResolution`
+
+These two answer different questions:
+
+- **`module`**: what module system should the *output* use?
+- **`moduleResolution`**: how does the compiler find the file behind `import "./b"` or
+  `import "react"`?
+
+Three setups cover nearly every project:
+
+| Setup | `module` | `moduleResolution` | When |
+| ----- | -------- | ------------------ | ---- |
+| **Bundler** | `esnext` (or `preserve`) | `bundler` | Next.js, Vite, anything a bundler builds. **This site.** |
+| **Node, compiled by `tsc`** | `nodenext` | `nodenext` | Servers and libraries run directly by Node |
+| **Legacy CommonJS** | `commonjs` | `node10` | Old projects only |
+
+### Bundler
+
+A bundler resolves imports its own way, accepting extensionless relative paths and package
+`exports`. `moduleResolution: "bundler"` tells TypeScript to do the same. `module: "preserve"`
+(added in TypeScript 5.4) goes one step further and keeps import/export syntax exactly as
+written; `--showConfig` shows it implying `bundler` resolution, `esModuleInterop` and
+`resolveJsonModule`.
+
+### Node: the `.js` extension rule
+
+With `nodenext`, TypeScript follows Node's real rules, which depend on whether a file is an
+ES module or CommonJS. In an ES module (a package with `"type": "module"`), a relative import
+**must include a file extension**, and it is the *output* extension, `.js`, even though the
+source file is `.ts`:
+
+```text
+import { b } from "./b";
+error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when
+'--moduleResolution' is 'node16' or 'nodenext'. Did you mean './b.js'?
+
+import { b } from "./b.js";     // fine
+```
+
+In a package *without* `"type": "module"` the same extensionless import compiled fine, because
+that file is CommonJS. The mode is decided per file by `package.json`.
+
+## JSX
+
+`jsx` controls what happens to `<a />`:
+
+```text
+preserve    export const el = <a href='/x'>hi</a>;                  (left for another tool)
+react-jsx   import { jsx as _jsx } from "react/jsx-runtime";
+            export const el = _jsx("a", { href: '/x', children: "hi" });
+react       export const el = React.createElement("a", { href: '/x' }, "hi");
+```
+
+`react-jsx` is the modern default: no `import React` needed. Next.js manages this setting for
+you.
+
+## Emit versus type-check
+
+Frameworks compile your code with their own tools (Next.js uses SWC/Turbopack). TypeScript's
+job is then only to **check**. `noEmit: true` says exactly that: produce no files.
+`incremental: true` stores a build-info file so repeated checks only redo what changed. With
+`noEmit`, that file is `tsconfig.tsbuildinfo` at the project root, which is why this
+repository's `.gitignore` lists `*.tsbuildinfo`.
+
+`skipLibCheck: true` skips type-checking `.d.ts` files, including those in `node_modules`.
+It speeds checks up and avoids errors from dependencies you cannot fix. It also means a
+broken declaration file elsewhere will not be reported, a trade-off nearly everyone accepts.
+
+## This site's `tsconfig.json`, annotated
+
+| Option | Value | Why |
+| ------ | ----- | --- |
+| `target` | `ES2022` | Modern runtimes; keeps `??`, `#private`, class fields as written |
+| `lib` | `dom`, `dom.iterable`, `esnext` | Browser and latest built-ins |
+| `jsx` | `react-jsx` | No `import React` |
+| `module` / `moduleResolution` | `esnext` / `bundler` | Next.js is a bundler |
+| `noEmit` | `true` | Next.js compiles; `tsc` only checks |
+| `incremental` | `true` | Faster repeat checks |
+| `skipLibCheck` | `true` | Speed, and dependency noise |
+| `plugins` | `next` | Editor support for Next.js conventions (does not affect `tsc`) |
+| `include` | `**/*.ts`, `**/*.tsx`, `**/*.mts`, `.next/types/**` | Source, scripts, and Next's generated route types |
+
+Two honest notes about this particular file:
+
+- `allowJs: true` came from the Next.js starter. The project has no JavaScript source files,
+  so it could be removed.
+- The strict-checking and path options are explained in *Strictness Flags* and *Paths,
+  Interop & Output*.
+
+## Common mistakes
+
+- **Relying on defaults for `module` / `moduleResolution`.** Set them.
+- **Mismatching the setup and the tool.** `nodenext` for a Next.js app, or `bundler` for a
+  Node server that `tsc` compiles for Node to run.
+- **Expecting `exclude` to hide a file** that something imports.
+- **Setting `target` low "for safety"**, which makes output bigger and slower for no gain.
+- **Editing `lib` and losing the DOM** (or setting it and forgetting `types`).
+- **Forgetting `.next/types` in `include`** for a Next.js project, so generated route types
+  disappear.
+
+## Practice
+
+1. Run `npx tsc --showConfig` in this repository. Find three options you never wrote that
+   appear in the output, and explain where each came from.
+2. Run `npx tsc --listFilesOnly | head` and `npx tsc --explainFiles | head -40`. Why is a
+   file inside `node_modules` in the list?
+3. Create a two-file project with `module` and `moduleResolution` set to `nodenext` and
+   `"type": "module"` in `package.json`. Reproduce error `TS2835`, then fix it.

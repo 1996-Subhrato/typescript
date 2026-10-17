@@ -1,0 +1,248 @@
+# Understanding Compiler Errors
+
+## What
+
+TypeScript's error messages are precise, and also long and full of type names. Reading them
+is a skill with a small number of rules. Once you have them, most errors take seconds to
+diagnose, and the longest ones are often the most helpful.
+
+Every message quoted on this page was captured from the TypeScript version installed in this
+project (5.9.3), not recalled.
+
+## Anatomy of an error
+
+```text
+a.ts(5,6): error TS2345: Argument of type '...' is not assignable to parameter of type 'Order'.
+  Types of property 'lines' are incompatible.
+    Type '...[]' is not assignable to type 'Line[]'.
+      ...
+```
+
+| Part | Meaning |
+| ---- | ------- |
+| `a.ts(5,6)` | File, line, column. Where the compiler **noticed** the problem |
+| `TS2345` | A stable error code. Searchable, and the same in every language |
+| First line | The headline: what kind of mismatch |
+| Indented lines | The **reasoning chain**: *why* it is a mismatch, one level deeper each time |
+
+## Rule 1: read the last line first
+
+The headline says *what* failed; the **deepest** line says *why*. Here is a real one. The code
+is an order object stored in a variable and passed to a function:
+
+```ts
+type Line = { sku: string; qty: number };
+type Order = { id: string; lines: Line[]; customer: { name: string } };
+
+function ship(order: Order): void {
+  console.log(order.id);
+}
+
+const draft = { id: "o1", lines: [{ sku: "a", qty: "2" }], customer: { name: "Ada" } };
+ship(draft); // Error: see the chain below
+```
+
+The compiler printed:
+
+```text
+TS2345: Argument of type '{ id: string; lines: { sku: string; qty: string; }[]; customer: { name: string; }; }'
+        is not assignable to parameter of type 'Order'.
+  Types of property 'lines' are incompatible.
+    Type '{ sku: string; qty: string; }[]' is not assignable to type 'Line[]'.
+      Type '{ sku: string; qty: string; }' is not assignable to type 'Line'.
+        Types of property 'qty' are incompatible.
+          Type 'string' is not assignable to type 'number'.
+```
+
+Six lines, but the answer is the last: **`qty` is a string and should be a number.** Each line
+above is just the path down to it: argument, then `lines`, then one element, then `qty`.
+Reading top to bottom you drown in type names; reading bottom up you get the cause, then
+climb the chain to see where it came from.
+
+## Rule 2: the location depends on how you passed the value
+
+When you write the object **directly in the call**, TypeScript can see exactly which
+property is wrong and points straight at it:
+
+```ts
+type Line = { sku: string; qty: number };
+type Order = { id: string; lines: Line[]; customer: { name: string } };
+
+function ship(order: Order): void {
+  console.log(order.id);
+}
+
+ship({
+  id: "o1",
+  lines: [
+    { sku: "a", qty: "2" }, // Error: the error lands here, on the offending line
+  ],
+  customer: { name: "Ada" },
+});
+```
+
+The message there is just `Type 'string' is not assignable to type 'number'`, with the error
+placed on the `qty` line. When the object lives in a variable, as above, the compiler reports
+at the *call* and gives you the whole chain. Same mistake, different presentation.
+
+## Rule 3: for overloads, read every attempt
+
+`No overload matches this call` lists a reason for **each** candidate:
+
+```ts
+function parse(input: string): number;
+function parse(input: string[]): number[];
+function parse(input: string | string[]): number | number[] {
+  return typeof input === "string" ? Number(input) : input.map(Number);
+}
+
+parse(5); // Error: No overload matches this call
+```
+
+```text
+TS2769: No overload matches this call.
+  Overload 1 of 2, '(input: string): number', gave the following error.
+    Argument of type 'number' is not assignable to parameter of type 'string'.
+  Overload 2 of 2, '(input: string[]): number[]', gave the following error.
+    Argument of type 'number' is not assignable to parameter of type 'string[]'.
+```
+
+If you *meant* to call the first overload, read the first reason; if the second, the second.
+When none is what you meant, the problem is the argument, not the function.
+
+## A catalogue of common errors
+
+Codes and wording below are from the installed compiler.
+
+| Code | Message (start) | Usual cause | Usual fix |
+| ---- | --------------- | ----------- | --------- |
+| TS2322 | Type 'X' is not assignable to type 'Y' | A value of one type where another is declared | Fix the value, or the declaration if it is wrong |
+| TS2345 | Argument of type 'X' is not assignable to parameter of type 'Y' | Wrong argument to a function | Same, at the call |
+| TS2339 | Property 'p' does not exist on type 'T' | Typo, or the property is on only some union members | Check the name; narrow the union |
+| TS18048 | 'x' is possibly 'undefined' | Optional value used without a check | Narrow (`if`, `?.`, `??`) |
+| TS18047 | 'x' is possibly 'null' | Nullable value used without a check | Same |
+| TS7006 | Parameter 'x' implicitly has an 'any' type | Nothing to infer a type from | Annotate the parameter |
+| TS2554 | Expected N arguments, but got M | Wrong argument count | Add or remove arguments |
+| TS2307 | Cannot find module 'x' or its corresponding type declarations | Typo, missing package, or bad path/`moduleResolution` | Fix the specifier; install; check config |
+| TS7016 | Could not find a declaration file for module 'x' | The package is JavaScript with no types | `@types/x`, or write a `declare module` stub |
+| TS2741 | Property 'p' is missing in type 'A' but required in type 'B' | Missing a required property | Add it, or make it optional if it should be |
+| TS2739 | Type 'A' is missing the following properties from type 'B': p, q | Several missing | Same |
+| TS2352 | Conversion of type 'A' to type 'B' may be a mistake | `as` between unrelated types | Fix the types; don't cast around it |
+| TS2564 | Property 'p' has no initializer and is not definitely assigned | Class field never assigned | Initialise it or assign in the constructor |
+| TS2367 | This comparison appears to be unintentional because the types have no overlap | Comparing against a value that cannot occur | Fix the typo or the union |
+| TS2304 | Cannot find name 'x' | Undeclared variable, missing import, missing `lib` | Import/declare it; check `lib` |
+| TS7053 | Element implicitly has an 'any' type because expression of type 'string' can't be used to index type | Indexing with a wide `string` | Use `keyof`, a `Record`, or a typed key |
+| TS2349 | This expression is not callable | Calling something that is not a function | Check what the value actually is |
+| TS2420 | Class 'C' incorrectly implements interface 'I' | Missing or mistyped member | Implement it |
+| TS2540 | Cannot assign to 'p' because it is a read-only property | Writing to a `readonly` property | Copy instead of mutating |
+| TS2556 | A spread argument must either have a tuple type or be passed to a rest parameter | Spreading a plain array into fixed parameters | Use a tuple (`as const`) or a rest parameter |
+| TS2578 | Unused '@ts-expect-error' directive | The error was fixed | Delete the directive |
+
+## Examples of the ones people stumble on
+
+### `TS2367`: comparing with something impossible
+
+```ts
+type Status = "pending" | "paid";
+
+function isPaid(status: Status): boolean {
+  return status === "payed"; // Error: This comparison appears to be unintentional
+}
+```
+
+The compiler is telling you that `"payed"` can never be a `Status`. Here that catches a typo.
+
+### `TS7053`: indexing with a plain `string`
+
+```ts
+const prices = { keyboard: 49, mouse: 25 };
+
+function priceOf(name: string): number {
+  return prices[name]; // Error: Element implicitly has an 'any' type ... No index signature
+}
+
+function priceOfKnown(name: keyof typeof prices): number {
+  return prices[name];
+}
+```
+
+A `string` could be any string, and `prices` has only two keys. Restrict the parameter to
+`keyof typeof prices`, or declare `prices` as a `Record<string, number>`.
+
+### `TS2556`: spreading an array
+
+```ts
+function sum(a: number, b: number): number {
+  return a + b;
+}
+
+const args = [1, 2];
+sum(...args); // Error: A spread argument must either have a tuple type or be passed to a rest parameter
+
+const tupleArgs = [1, 2] as const;
+sum(...tupleArgs);
+```
+
+An array might have any length; a tuple has exactly two elements.
+
+### `TS2322` that points somewhere surprising
+
+With generics, the error often appears at the **use**, not at the generic function:
+
+```ts
+function first<T>(items: T[]): T {
+  return items[0]!;
+}
+
+const label: string = first([1, 2, 3]); // Error: Type 'number' is not assignable to type 'string'
+```
+
+`T` was inferred as `number` from the argument, and then the *result* didn't fit `string`.
+The mistake is on the declaration, even though the function is fine.
+
+### `TS2345` on a callback
+
+```ts
+const ids: number[] = [1, 2, 3];
+ids.map((id: string) => id.length); // Error: Argument of type '(id: string) => number' is not assignable ...
+```
+
+```text
+Types of parameters 'id' and 'value' are incompatible.
+  Type 'number' is not assignable to type 'string'.
+```
+
+`map` passes numbers to your callback; you declared that the callback takes strings. The last
+line says exactly that.
+
+## A debugging recipe
+
+1. **Read the last line** of the message. What type is actually there, and what was expected?
+2. **Go to the line and column.** Is it where the value is *created* or where it is *used*?
+3. **Hover** over both sides. Are the types what you believed?
+4. **Reduce.** Copy the failing expression to a scratch line with a `const` of the expected
+   type and watch the same error shrink.
+5. **Decide which side is wrong**: the value, or the declared type. Usually it is the value.
+6. **Only then** consider a cast or suppression, and prefer `@ts-expect-error` with a reason.
+
+When messages are cut off with `...`, run `tsc --noErrorTruncation`. When a message seems
+wrong, remember the compiler reports where it **noticed**; the cause may be earlier, such as
+a wrongly inferred generic or a widened literal.
+
+## Common mistakes
+
+- **Reading from the top** and getting lost in type names.
+- **Fixing the symptom at the error line** when the declaration is wrong.
+- **Silencing with `as any`** (*Avoiding any*) before understanding the message.
+- **Ignoring the error code**, which is the fastest way to search.
+- **Assuming the compiler is wrong.** It occasionally is, but the first assumption should be
+  that the types say something you did not intend.
+
+## Practice
+
+1. Write the nested `ship(draft)` error yourself, then fix it in two different ways: by
+   changing the data, and by changing the type. Which is right depends on what `qty` means.
+2. Cause `TS2769` with a function you overload, and work out from the message alone which
+   overload you should have called.
+3. Take any error from your current project that you didn't immediately understand. Rewrite
+   it in your own words using the last-line rule.

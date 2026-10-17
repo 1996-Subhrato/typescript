@@ -1,0 +1,272 @@
+# Anti-Patterns
+
+## What
+
+Patterns that compile, pass review on a busy day, and gradually erode what TypeScript is for.
+Almost every entry has the same shape: **the bad version compiles cleanly**, which is exactly
+why it survives. For each one, the better version is shown with the mistake the compiler now
+catches.
+
+Most are explained in depth elsewhere; this is the checklist to hold up against a codebase.
+
+## 1. Casting to silence the compiler
+
+```ts
+type User = { id: number; name: string };
+
+const user = {} as User; // compiles
+console.log(user.name.toUpperCase()); // compiles; throws at runtime
+```
+
+`as` is a promise, not a check. Build the real value, or say honestly that it is partial:
+
+```ts
+type User = { id: number; name: string };
+
+const draft: Partial<User> = {};
+console.log(draft.name.toUpperCase()); // Error: 'draft.name' is possibly 'undefined'
+```
+
+*Type Assertions* covers when a cast is fine: after you have proven the type.
+
+## 2. Chains of `!`
+
+```ts
+type Order = { customer?: { address?: { city: string } } };
+declare const order: Order;
+
+const risky = order.customer!.address!.city; // compiles; throws if either is missing
+
+const safe = order.customer?.address?.city ?? "unknown";
+```
+
+A `!` asserts that you know something the compiler doesn't. Two in a row usually means you
+don't.
+
+## 3. Stringly-typed code
+
+```ts
+type OrderLoose = { status: string };
+
+function isPaidLoose(order: OrderLoose): boolean {
+  return order.status === "pyaid"; // compiles, silently always false
+}
+```
+
+```ts
+type Order = { status: "pending" | "paid" | "shipped" };
+
+function isPaid(order: Order): boolean {
+  return order.status === "pyaid"; // Error: This comparison appears to be unintentional
+}
+```
+
+If a value comes from a fixed set, list the set (*Unions, Literals & Intersections*).
+
+## 4. Mutating your inputs
+
+```ts
+function addTaxLoose(prices: number[]): number[] {
+  for (let i = 0; i < prices.length; i++) prices[i] = (prices[i] ?? 0) * 1.2; // changes the caller's array
+  return prices;
+}
+```
+
+```ts
+function addTax(prices: readonly number[]): number[] {
+  return prices.map((price) => price * 1.2);
+}
+
+function addTaxBroken(prices: readonly number[]): readonly number[] {
+  prices[0] = 0; // Error: Index signature in type 'readonly number[]' only permits reading
+  return prices;
+}
+```
+
+`readonly` on a parameter is a free guarantee to the caller that you will not touch it.
+
+## 5. The catch-all index signature
+
+```ts
+type ProductLoose = { id: number; [key: string]: any };
+
+declare const product: ProductLoose;
+const name = product.nmae; // compiles: typo, and the type is `any`
+```
+
+```ts
+type Product = { id: number; name: string; tags?: string[] };
+
+declare const real: Product;
+const typo = real.nmae; // Error: Property 'nmae' does not exist on type 'Product'
+```
+
+An index signature on a *model* turns every typo into a valid property. Reserve index
+signatures for genuine dictionaries.
+
+## 6. A `default` branch that hides new cases
+
+```ts
+type Status = "pending" | "paid" | "shipped";
+
+function labelLoose(status: Status): string {
+  switch (status) {
+    case "pending":
+      return "Pending";
+    case "paid":
+      return "Paid";
+    default:
+      return "Unknown"; // "shipped" silently lands here, and so will every future status
+  }
+}
+```
+
+```ts
+type Status = "pending" | "paid" | "shipped";
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled: ${String(value)}`);
+}
+
+function label(status: Status): string {
+  switch (status) {
+    case "pending":
+      return "Pending";
+    case "paid":
+      return "Paid";
+    default:
+      return assertNever(status); // Error: '"shipped"' is not assignable to 'never'
+  }
+}
+```
+
+(*any, unknown, never, void* and *Discriminated Unions*.)
+
+## 7. Forgetting to `await`
+
+```ts
+async function save(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
+
+function redirect(): void {
+  console.log("redirecting");
+}
+
+function onSubmit(): void {
+  save(); // compiles: the promise is created and ignored
+  redirect(); // runs BEFORE the save has finished
+}
+```
+
+TypeScript does not flag this. The fix is `await save()` in an `async` function. A
+type-aware lint rule (`no-floating-promises` in `typescript-eslint`) catches it, and this
+project's ESLint setup does not, so that one is on you. It is one of the most common real
+bugs in TypeScript code.
+
+## 8. Annotating away useful information
+
+```ts
+const retriesAnnotated: number = 3;
+const retries = 3;
+
+const exact: 3 = retries; // fine: `retries` is the literal type 3
+const lost: 3 = retriesAnnotated; // Error: `number` is not assignable to `3`
+```
+
+Annotating something the compiler already knows doesn't just add noise; it can widen the
+type. Annotate boundaries (parameters, exports, empty collections); let inference handle
+the rest (*Annotations & Inference*).
+
+## 9. Generics that relate nothing
+
+```ts
+function logAnything<T>(value: T): void {
+  console.log(value);
+}
+
+function log(value: unknown): void {
+  console.log(value);
+}
+```
+
+A type parameter that appears once connects nothing to nothing. If `T` is not in two places,
+use the real type.
+
+## 10. Two copies of the same type
+
+```ts
+// api/types.ts
+type ApiUser = { id: number; name: string; email: string };
+
+// ui/types.ts: a copy someone made "to avoid coupling"
+type UiUser = { id: number; name: string };
+
+declare const fromApi: ApiUser;
+const shown: UiUser = fromApi; // compiles today
+```
+
+Add a required `role` to one and the other drifts without anyone noticing, because
+TypeScript is structural. If they should stay in sync, derive one from the other
+(`Pick<ApiUser, "id" | "name">`). If they should be allowed to differ, name the difference.
+
+## 11. Exceptions for expected failures
+
+```ts
+function parseAgeThrowing(input: string): number {
+  const age = Number(input);
+  if (Number.isNaN(age)) throw new Error("not a number");
+  return age;
+}
+
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+function parseAge(input: string): Result<number, "not-a-number"> {
+  const age = Number(input);
+  return Number.isNaN(age) ? { ok: false, error: "not-a-number" } : { ok: true, value: age };
+}
+
+const result = parseAge("x");
+console.log(result.value); // Error: 'value' does not exist on the failure case
+```
+
+The signature `(input: string) => number` of the first version promises success. If failure is
+expected, put it in the type (*Result & Error Types*).
+
+## The rest, at a glance
+
+| Anti-pattern | See |
+| ------------ | --- |
+| `any` for convenience | *Avoiding any* |
+| `@ts-ignore` instead of `@ts-expect-error` | *Strictness Flags* |
+| A bag of optional fields instead of a union | *Designing Reusable Types* |
+| Boolean flag parameters | *Designing Reusable Types* |
+| `response.json() as T` | *unknown at the Boundary* |
+| Using a database/wire type as the public model | *Database Models* |
+| `enum` where a literal union is enough | *Enums & as const* |
+| Branding everything, or nothing | *Branded Types* |
+| A type so clever nobody can read it | *Reading Complex Types* |
+| Turning strictness down to make errors vanish | *Strictness Flags* |
+
+## What a linter can and cannot catch
+
+From running this repository's ESLint over a file of these patterns: it **caught** `any`,
+`@ts-ignore`, `Function`, `{}`, `Object`, namespaces and `var`. It did **not** catch non-null
+assertions, `as` casts, `as unknown as`, floating promises, or enums. The quiet anti-patterns
+above are the ones that need either stricter lint presets or code review.
+
+## Common mistakes
+
+- **Treating a clean compile as a clean bill of health.** Every pattern here compiles.
+- **Fixing symptoms** (adding a cast) instead of the type that is wrong.
+- **Reviewing for style** and missing these.
+- **Adding lint rules and never revisiting the exceptions.**
+
+## Practice
+
+1. Search one project for `!.`, `as `, and `: any`. Count them, and classify five as
+   necessary, avoidable, or dangerous.
+2. Find one `switch` over a union with a `default` branch. Does adding a value to the union
+   change what happens? Add `assertNever`.
+3. Find a function that returns `null` or `-1` for "not found" or `throw`s for it. Decide
+   whether the failure is expected, and if so, rewrite it with a `Result`.

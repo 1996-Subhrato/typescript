@@ -1,0 +1,229 @@
+# Designing Reusable Types
+
+## What
+
+Knowing every feature of the type system is the easy part. The skill is deciding **which
+types to write**, what to derive, and when to stop. Good types read like documentation and
+fail loudly in the right places; bad ones are either too loose to help or too clever to read.
+
+This page collects the design habits that matter most, each with before and after code.
+
+## 1. Make illegal states unrepresentable
+
+If the type allows combinations that cannot happen, every consumer has to guard against them.
+
+```ts
+// Before: the type allows nonsense
+type SubscriptionLoose = {
+  status: "trialing" | "active" | "canceled";
+  trialEndsAt?: Date;
+  canceledAt?: Date;
+  nextBillingDate?: Date;
+};
+
+const nonsense: SubscriptionLoose = { status: "trialing", canceledAt: new Date() }; // allowed
+```
+
+```ts
+// After: each state carries exactly its own fields
+type Subscription =
+  | { status: "trialing"; trialEndsAt: Date }
+  | { status: "active"; nextBillingDate: Date }
+  | { status: "canceled"; canceledAt: Date };
+
+const invalid: Subscription = { status: "trialing", canceledAt: new Date() }; // Error: 'trialEndsAt' is missing
+
+function describe(subscription: Subscription): string {
+  switch (subscription.status) {
+    case "trialing":
+      return `Trial ends ${subscription.trialEndsAt.toDateString()}`;
+    case "active":
+      return `Renews ${subscription.nextBillingDate.toDateString()}`;
+    case "canceled":
+      return `Canceled ${subscription.canceledAt.toDateString()}`;
+  }
+}
+```
+
+The rule of thumb: if you find yourself writing `if (x.a && !x.b)` to check a state that
+"shouldn't happen", the type should have ruled it out (*Discriminated Unions*).
+
+## 2. One source of truth: derive, do not duplicate
+
+Two copies of the same list will drift.
+
+```ts
+// Before: the list and the type are written separately
+type RoleLoose = "admin" | "editor" | "viewer";
+const ROLES_LOOSE = ["admin", "editor", "viewer"]; // add "owner" to one and forget the other
+```
+
+```ts
+// After: the type is derived from the value
+const ROLES = ["admin", "editor", "viewer"] as const;
+type Role = (typeof ROLES)[number];
+
+function isRole(value: string): value is Role {
+  return (ROLES as readonly string[]).includes(value);
+}
+```
+
+This site's own `TopicSlug` is derived from its registry for the same reason. The same applies
+to schemas (`z.infer`), route tables, and config objects.
+
+## 3. Wide inputs, narrow outputs
+
+Accept the least you need; promise the most you know.
+
+```ts
+// Before: demands a mutable array, returns something vague
+function total(prices: number[]): number | undefined {
+  return prices.length === 0 ? undefined : prices.reduce((sum, price) => sum + price, 0);
+}
+
+// After: accepts any read-only sequence, returns exactly what it produces
+function sum(prices: Iterable<number>): number {
+  let result = 0;
+  for (const price of prices) result += price;
+  return result;
+}
+
+sum([1, 2, 3]);
+sum(new Set([1, 2, 3]));
+sum((function* () { yield 1; yield 2; })());
+```
+
+`readonly` and `Iterable` on inputs let more callers in (*Structural Typing*). A precise return
+type, `number` rather than `number | undefined`, saves every caller a check.
+
+## 4. Options objects, not flag parameters
+
+A positional boolean tells the reader nothing at the call site.
+
+```ts
+// Before: what do `true` and `false` mean here?
+declare function renderUserLoose(user: { name: string }, compact: boolean, showEmail: boolean): string;
+renderUserLoose({ name: "Ada" }, true, false);
+```
+
+```ts
+// After: named, optional, and extensible
+type RenderOptions = {
+  layout?: "compact" | "full";
+  showEmail?: boolean;
+};
+
+const DEFAULTS = { layout: "full", showEmail: true } as const satisfies Required<RenderOptions>;
+
+function renderUser(user: { name: string }, options: RenderOptions = {}): string {
+  const { layout = DEFAULTS.layout, showEmail = DEFAULTS.showEmail } = options;
+  return `${user.name} (${layout}, email ${showEmail ? "shown" : "hidden"})`;
+}
+
+renderUser({ name: "Ada" }, { layout: "compact" });
+renderUser({ name: "Ada" }, { layout: "tiny" }); // Error: '"tiny"' is not assignable to '"compact" | "full" | undefined'
+```
+
+`satisfies Required<RenderOptions>` makes the defaults object complete: add an option and the
+compiler reminds you to give it a default.
+
+## 5. Compose small types
+
+Small, named pieces combine; one giant type per screen does not.
+
+```ts
+type Timestamps = { createdAt: Date; updatedAt: Date };
+type WithId<T> = T & { id: string };
+
+type NewProduct = { name: string; priceCents: number };
+type Product = WithId<NewProduct & Timestamps>;
+type ProductPatch = Partial<NewProduct>;
+type ProductSummary = Pick<Product, "id" | "name">;
+```
+
+Notice that only `NewProduct` is written out. Everything else is derived (*Utility Types*).
+
+## 6. Generalise on the third use
+
+A generic type or function is a commitment. Start concrete and generalise when you have seen
+the pattern **three times**; before that you are guessing which parts vary.
+
+```ts
+// Used once: keep it concrete
+function latestOrder(orders: readonly { id: string; placedAt: Date }[]) {
+  return [...orders].sort((a, b) => b.placedAt.getTime() - a.placedAt.getTime())[0];
+}
+
+// Used by orders, invoices and shipments: now a generic earns its keep
+function latestBy<T>(items: readonly T[], date: (item: T) => Date): T | undefined {
+  return [...items].sort((a, b) => date(b).getTime() - date(a).getTime())[0];
+}
+```
+
+And a test for any generic: the type parameter should appear **at least twice** (input to
+output, or one parameter to another). A `<T>` used once relates nothing.
+
+## 7. Name things for what they mean
+
+```ts
+type Data = { a: string; b: number }; // meaningless
+type Item = { id: string }; // which item?
+
+type Customer = { id: CustomerId; email: string };
+type PaidInvoice = { id: InvoiceId; paidAt: Date; amountCents: number };
+
+declare const brand: unique symbol;
+type CustomerId = string & { readonly [brand]: "CustomerId" };
+type InvoiceId = string & { readonly [brand]: "InvoiceId" };
+```
+
+Avoid `Data`, `Info`, `Item`, `Object`, `Manager`. Name by role in the domain. Brand
+identifiers only where mixing them up is plausible *and* costly (*Branded Types*).
+
+## 8. Keep the public surface small
+
+What a module exports is a promise. Export the types callers need; keep helpers private.
+Prefer exporting a precise type over leaking an internal one.
+
+```ts
+type InternalRow = { id: number; password_hash: string; created_at: Date };
+
+export type PublicUser = { id: number; createdAt: Date };
+
+export function toPublicUser(row: InternalRow): PublicUser {
+  return { id: row.id, createdAt: row.created_at };
+}
+```
+
+`InternalRow` never leaves the file, so nothing outside can depend on the hash being there.
+
+## 9. Know when to stop
+
+Types are code that someone must read. Warning signs that a type has become too clever:
+
+- It needs a comment longer than the type to be understood.
+- Error messages mention it by an expansion nobody can parse.
+- The only person who understands it has left.
+- A runtime check or a plain function would be shorter and clearer.
+
+If a type is hard to read, consider whether a simpler, slightly less precise one would serve.
+*Reading Complex Types* is the other side of this: you will meet such types in libraries.
+
+## Common mistakes
+
+- **Bags of optional fields** instead of a union.
+- **Boolean parameters** that read as `f(true, false)`.
+- **Duplicating a list as both a value and a type.**
+- **Generalising on the first use** and getting the abstraction wrong.
+- **Exposing a row, wire or ORM type** as the public model.
+- **Branding everything**, which adds ceremony without preventing real mistakes.
+- **Types that mirror the UI** rather than the domain, and break when the UI changes.
+
+## Practice
+
+1. Take a type from a project of your own with three or more optional fields. List the states
+   it can actually be in, then rewrite it as a union.
+2. Find a function with two or more boolean parameters and convert it to an options object
+   with named, defaulted fields.
+3. Find two types that share a shape. Express one as a derivation of the other, and decide
+   whether the derivation is clearer than the copy.
