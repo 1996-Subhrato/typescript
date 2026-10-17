@@ -10,7 +10,8 @@
     "check:content": "node scripts/check-content.mts",
     "typecheck": "next typegen && tsc --noEmit",
     "check:pages": "node scripts/check-pages.mts",
-    "check:links": "node --no-warnings scripts/check-links.mts"
+    "check:links": "node --no-warnings scripts/check-links.mts",
+    "test": "node --no-warnings --test scripts/search.test.mts"
   },
   "dependencies": {
     "@mdx-js/loader": "^3.1.1",

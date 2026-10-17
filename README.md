@@ -51,7 +51,8 @@ a topic as planned, in which case it appears greyed out so the whole path stays 
 
 - **Registry-driven navigation**: one typed source of truth for levels, order and status
 - **Sidebar** with active-link highlighting, and a **mobile drawer**
-- **Search palette** (`Ctrl/Cmd + K`) over topic titles and summaries
+- **Full-text search** (`Ctrl/Cmd + K`) over titles, headings and prose, including inline terms like
+  `keyof` and error codes like `TS2345`; results jump to the matching section
 - **Table of contents** generated from each page's headings
 - **Previous / next** navigation across the whole learning sequence
 - **Syntax highlighting** via Shiki with light and dark themes, plus a **copy button**
@@ -92,6 +93,7 @@ Then open <http://localhost:3000>.
 | `npm run lint` | Run ESLint |
 | `npm run typecheck` | Generate Next's route types, then run `tsc --noEmit` |
 | `npm run check:content` | Compile every code sample in the docs |
+| `npm test` | Unit tests for the search code (Node's built-in test runner) |
 | `npm run check:links` | Verify cross-references between topics (add `-- --fix` to turn them into links) |
 | `npm run check:pages` | Smoke-test every rendered page (needs a running server) |
 
@@ -108,6 +110,7 @@ npm run typecheck
 npm run lint
 npm run check:content
 npm run check:links
+npm test
 npm run build
 ```
 

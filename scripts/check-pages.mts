@@ -13,6 +13,7 @@
  */
 import { readdirSync } from "node:fs";
 import path from "node:path";
+import { parseSearchIndex, search } from "../src/lib/search.ts";
 
 const BASE_URL = process.env["BASE_URL"] ?? "http://localhost:3000";
 const CONTENT_DIR = path.join(process.cwd(), "src", "content");
@@ -78,4 +79,58 @@ console.log(
     ? `\nALL ${slugs.length} PAGES OK (${linkCount} internal links inside articles, none broken)`
     : `\n${failures} OF ${slugs.length} PAGE(S) FAILED`,
 );
-process.exitCode = failures === 0 ? 0 : 1;
+
+/**
+ * The search index is served as JSON (`/search-index.json`). Check that it is valid, covers every
+ * topic, and that a few real queries land on the right page. Skipped when specific slugs were asked
+ * for, since it is not about any one page.
+ */
+async function checkSearchIndex(): Promise<number> {
+  const response = await fetch(`${BASE_URL}/search-index.json`);
+  const body: unknown = await response.json().catch(() => undefined);
+  const index = parseSearchIndex(body);
+
+  if (!response.ok || index === null) {
+    console.log(`FAIL search-index.json: http=${response.status}, valid=${index !== null}`);
+    return 1;
+  }
+
+  let failed = 0;
+  const indexed = new Set(index.map((entry) => entry.slug));
+  const missing = [...knownSlugs].filter((slug) => !indexed.has(slug));
+  if (missing.length > 0) {
+    failed += 1;
+    console.log(`FAIL search index is missing topics: ${missing.join(", ")}`);
+  }
+
+  // [query, a slug that must be the top hit]
+  const expectations: readonly (readonly [string, string])[] = [
+    ["keyof", "generic-constraints"],
+    ["satisfies", "type-assertions"],
+    ["TS2345", "compiler-errors"],
+    ["exactOptionalPropertyTypes", "strictness-flags"],
+    ["useActionState", "nextjs-server-actions"],
+    ["esModuleInterop", "paths-and-output"],
+  ];
+  for (const [query, expected] of expectations) {
+    const top = search(index, query, 1)[0]?.entry.slug;
+    if (top !== expected) {
+      failed += 1;
+      console.log(`FAIL search "${query}": expected ${expected} first, got ${top ?? "nothing"}`);
+    }
+  }
+  if (search(index, "qzxwvutsr", 1).length !== 0) {
+    failed += 1;
+    console.log('FAIL search "qzxwvutsr" should return nothing');
+  }
+
+  console.log(
+    failed === 0
+      ? `SEARCH OK (${index.length} topics indexed, ${expectations.length} sample queries land on the right page)`
+      : `${failed} SEARCH CHECK(S) FAILED`,
+  );
+  return failed;
+}
+
+const searchFailures = requested.length === 0 ? await checkSearchIndex() : 0;
+process.exitCode = failures === 0 && searchFailures === 0 ? 0 : 1;

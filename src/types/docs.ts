@@ -66,3 +66,25 @@ export interface TocNode {
   readonly depth: HeadingDepth;
   readonly children: readonly TocNode[];
 }
+
+/* -------------------------------------------------------------------------- */
+/* Search                                                                     */
+/* -------------------------------------------------------------------------- */
+
+export interface SearchHeading {
+  readonly id: string;
+  readonly title: string;
+}
+
+/** One topic as the search index sees it: metadata, headings, and plain prose. */
+export interface SearchEntry {
+  readonly slug: string;
+  readonly title: string;
+  readonly levelTitle: string;
+  readonly summary: string;
+  readonly headings: readonly SearchHeading[];
+  /** Prose with Markdown syntax removed. Code blocks are deliberately excluded. */
+  readonly text: string;
+}
+
+export type SearchIndex = readonly SearchEntry[];

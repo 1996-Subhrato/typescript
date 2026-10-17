@@ -28,6 +28,7 @@
 
     /* Emit — Next.js compiles, tsc only type-checks */
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "incremental": true,
     "skipLibCheck": true,
     "allowJs": true,
