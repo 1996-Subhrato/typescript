@@ -9,16 +9,17 @@
 
 ## Current Phase
 
-**Phase 9 — Config + Professional** &nbsp;·&nbsp; Status: ✅ **Complete**
+**Phase 10 — Review, Exercises & Capstone** &nbsp;·&nbsp; Status: ✅ **Complete** &nbsp;·&nbsp; **All planned phases (0-10) are done.**
 
 ## Current Topic
 
-None in progress. **All 64 topics are written and published.** Only Phase 10 (review, exercises, capstone) remains.
+None in progress. All 64 topics are written and published, and the capstone is live at `/capstone`.
 
 ## Current Status
 
-Phase 9 is complete, verified and committed. Awaiting user go-ahead to begin **Phase 10 — Review, Exercises & Capstone**,
-the final phase. Default behaviour: **one phase per request, then stop**, unless the user explicitly asks for more.
+The course is finished as planned. There is no next phase. Further work is whatever the user asks for: review of their
+Practice attempts (see Exercise Log), the optional polish items below, or new topics. Default behaviour is unchanged: do what is
+asked, then stop.
 
 ---
 
@@ -246,47 +247,62 @@ compiler note on unused parameters.
 
 ---
 
+### Phase 10 — Review, Exercises & Capstone ✅
+
+No new language topics. Commits: `8e57ef3` (cross-references), `a363d30` (search), `a19414a` (exercises), `e87fb38` (gate
+project mode), `aab1efb` (capstone pages), `2831c5e` (capstone site integration), plus the final documentation commit.
+
+- **Cross-references.** `scripts/check-links.mts`: an italic phrase that nearly matches a topic title is an error (`NEAR MISS`), so is an
+  exact title that is not a link (`UNLINKED`); `--fix` rewrites them as links; stale wording ("the next topic", "later in this level") is
+  listed for a human. Two wrong "next-but-one" claims were found this way. It also scans `src/capstone`.
+- **Search.** A static `/search-index.json` built from the MDX (titles, headings, prose without code), fetched lazily and validated as
+  `unknown`; pure ranking in `src/lib/search.ts` (AND of tokens, whole-word title > partial > heading > summary > prose count),
+  heading deep-links, so `keyof`, `satisfies` and `TS2345` land on the right page. Entries carry an `href`, so capstone pages are
+  searchable too.
+- **Exercises.** `/exercises` lists all 165 Practice exercises (server-rendered text, client island for the checkbox), progress in
+  `localStorage` via `useSyncExternalStore`. No solutions.
+- **Gate project mode.** `check-content.mts` treats `ts title="path"` fences in `src/capstone` as files of ONE project: written to a scratch
+  project, compiled together under the strict flags, each path once, each file a module.
+- **Capstone: The Orders Desk.** Overview plus seven steps (domain, wire format, contract, client, server, UI, review). Code on the pages
+  is the verified project: compiled strictly, run end to end (a script exercised every route and the client), linted, and
+  mutation-checked (the "Try breaking it" errors are real). Techniques: branded types, Zod schemas whose output is the domain type,
+  template-literal path-parameter extraction, a conditional `InputOf`, mapped-type `Senders`/`Handlers` tables, `Result` +
+  `assertNever`, a discriminated-union reducer. Served by `/capstone` and `/capstone/[step]`; the page list is the typed
+  `capstonePages` in `src/lib/capstone.ts`, and `scripts/capstone.test.mts` fails if it drifts from the files or from each page's h1.
+- **Prose corrections found during checks:** "next-but-one" (x2), mutable-array covariance wording, `NonNullable` real definition,
+  "only two assertions" (now "apart from `as const`"), line count (~650), error count (twenty), an unverified hook reference.
+
+**Verification (all green):** `typecheck` · `lint` · `check:content` -> 72 pages · 512 blocks (14 project files) · 23 option sets · 15 skipped ·
+192/192 claimed errors real · `check:links` -> 158 links, 0 problems · `npm test` -> 38 tests · `build` -> 78 static pages ·
+`check:pages` -> 64 topic pages + 8 capstone pages OK, search and exercises OK · browser spot-check of `/capstone/04-client` and a
+search for a capstone term.
+
+---
+
 ## Pending Phases
 
-| Phase | Name | Topics | Notes |
-| ----- | ---- | ------ | ----- |
-| 10 | Review, Exercises & Capstone | — | Exercise pages, search polish, final pass |
+None. Every phase in the original plan is complete.
 
-Full topic list: [`ROADMAP.md`](./ROADMAP.md). Machine-readable version: `src/lib/registry.ts`.
-
-**Content progress: 64 / 64 topics published** (every level complete).
+**Content progress: 64 / 64 topics published, plus the capstone.** Full topic list: [`ROADMAP.md`](./ROADMAP.md). Machine-readable
+version: `src/lib/registry.ts`.
 
 ---
 
 ## Next Topic
 
-**Phase 10 — Review, Exercises & Capstone.** The final phase. No new language topics; it turns 64 reference pages into a finished course.
-Suggested scope (confirm with the user before starting; split into 10a/10b if long):
+Nothing is scheduled. Optional polish that was considered and NOT done (do only if the user asks):
 
-**10a — Quality and consistency (do first; mostly tooling)**
-1. **Cross-reference checker.** Pages cite each other by italic title (`*Narrowing*`, `*A Generic API Client*`). Add a check to
-   `scripts/` that every italic reference matching a topic-like phrase resolves to a real registry title, and report dead or renamed ones.
-   Consider turning verified references into real links.
-2. **Forward-reference audit.** Every "covered later / in the next topic" promise should now point at an existing page. Sweep for stale wording
-   (e.g. "later in this level").
-3. **Search upgrade.** Search currently matches titles and summaries only. Build a build-time index of headings and text so it finds `keyof`,
-   `satisfies`, `TS2345`, etc. Keep it client-side and small; test it.
-4. **README and ROADMAP final pass**, plus `LEARNING_PROGRESS.md` cleanup (it has grown long: archive per-phase detail if useful).
+- dark-mode toggle (the site follows the OS setting);
+- a per-page "last verified with TypeScript X" note;
+- print styles;
+- an archive pass on this file's per-phase detail (it is long; the decisions and Authoring Reference are the parts worth keeping).
 
-**10b — Exercises and capstone**
-5. **Exercises index.** Every topic ends with a *Practice* section and NO solutions (by design). Build an exercises page grouped by level, with
-   difficulty and links back to the topic. Do not add solutions unless the user asks; collect the user's attempts first (see Exercise Log).
-6. **Capstone project.** A guided, multi-step build that uses the whole course (suggestion: a small typed "orders" app — shared contract, typed
-   client, validated route handler, React state as a discriminated union, strict tsconfig). Every code block must pass `npm run check:content`;
-   use the repo's existing conventions. Offer it as a separate section, not a registry level, unless the user wants otherwise.
-7. **Optional polish:** dark-mode toggle (currently follows the OS), per-page "last verified with TypeScript X" note, print styles.
-
-**Still unverified and needs the USER's eyes:** TOC scroll-spy highlighting (never seen working — the preview pane cannot render it), and the
-visual design on a real screen.
+**Still unverified and needs the USER's eyes:** TOC scroll-spy highlighting (never seen working: the preview pane cannot render it) and
+the visual design on a real screen.
 
 ### Open forward references
 
-None known. (Verify with the cross-reference checker above.)
+None known. `npm run check:links` lists wording that may have gone stale; that list is for human review, not failures.
 
 ---
 
@@ -295,7 +311,7 @@ None known. (Verify with the cross-reference checker above.)
 Every topic ends with a **Practice** section. No solutions are written anywhere, by design.
 The user has not yet submitted attempts for any of them. When the user returns with an
 attempt, review it as a mentor: explain what the compiler reports and why, and only then
-show an idiomatic solution. Phase 10 should consolidate these into a graded set.
+show an idiomatic solution. `/exercises` collects all 165 exercises with a progress tracker (browser-local).
 
 ---
 
@@ -438,6 +454,21 @@ show an idiomatic solution. Phase 10 should consolidate these into a graded set.
     THIS repo's ESLint enforces, measured by linting a file of offences. Rule names beyond those measured are described as "available in
     typescript-eslint's stricter presets", not as active here.
 
+33. **Cross-references are checked, not trusted.** *(Phase 10)* Pages cite each other by italic title; `check:links` fails on near misses and
+    unlinked exact titles, and `--fix` writes the links. Titles in the registry are therefore load-bearing: rename one and the check says
+    where the old name is still used.
+
+34. **Search is a static JSON index, not a service.** *(Phase 10)* Built from the MDX at build time (`force-static`), fetched once on first
+    open, validated as `unknown`. Ranking is pure and unit-tested with no DOM. Every entry has an `href`; capstone entries use the slug
+    `capstone/<name>` so they cannot collide with a topic.
+
+35. **The capstone is a separate section, not a registry level.** *(Phase 10)* `src/capstone/*.mdx` + `src/lib/capstone.ts`
+    (`as const satisfies`), served at `/capstone`. A unit test keeps the list, the files and each h1 in sync; `check:pages` fetches every
+    page. `/capstone/overview` is deliberately a 404 (the overview is `/capstone`).
+
+36. **Multi-file code on a page is compiled as one project.** *(Phase 10)* A fence with `title="src/..."` is a file of the capstone project;
+    the gate writes them all out and compiles them together, so the pages cannot show code that does not build and each file appears once.
+
 ---
 
 ## Project Architecture
@@ -449,21 +480,29 @@ D:\TypeScript
 │   │   ├── layout.tsx           # Root layout, fonts, metadata, SiteHeader
 │   │   ├── page.tsx             # Roadmap index + progress bar
 │   │   ├── globals.css          # Prose + code-block styling
-│   │   └── docs/
-│   │       ├── layout.tsx       # Sidebar shell for all topic pages
-│   │       └── [slug]/page.tsx  # Renders one MDX topic + TOC + prev/next
-│   ├── components/              # SiteHeader, Sidebar, MobileNav, Search,
-│   │                            # TableOfContents, PrevNextNav, CodeBlock
+│   │   ├── docs/
+│   │   │   ├── layout.tsx       # Sidebar shell for all topic pages
+│   │   │   └── [slug]/page.tsx  # Renders one MDX topic + TOC + prev/next
+│   │   ├── capstone/            # /capstone (overview) and /capstone/[step]
+│   │   ├── exercises/page.tsx   # All Practice exercises + progress tracker
+│   │   └── search-index.json/   # Static full-text index
+│   ├── components/              # SiteHeader, Sidebar, MobileNav, Search, TableOfContents,
+│   │                            # PrevNextNav, CodeBlock, CapstoneNav, CapstoneView, ExerciseItem
 │   ├── content/                 # 64 MDX topics — one file per registry slug
+│   ├── capstone/                # 8 MDX pages of the Orders Desk build
 │   ├── lib/
 │   │   ├── registry.ts          # Source of truth: levels, topics, order, status
+│   │   ├── capstone.ts          # Typed capstone page list
+│   │   ├── search.ts            # Pure index validation + ranking (no DOM)
 │   │   ├── docs.ts              # Derived helpers — SAFE for client components
 │   │   └── toc.ts               # Heading parser — SERVER ONLY (node:fs)
 │   ├── types/docs.ts            # Navigation model + recursive TocNode
 │   └── mdx-components.tsx       # Global MDX overrides (pre -> CodeBlock)
 ├── scripts/
-│   ├── check-content.mts        # Content gate: compiles code, lints MDX prose
-│   └── check-pages.mts          # Page smoke test (needs a running server)
+│   ├── check-content.mts        # Content gate: compiles code (topics + capstone project), lints MDX prose
+│   ├── check-links.mts          # Cross-reference checker
+│   ├── check-pages.mts          # Page smoke test (needs a running server)
+│   └── *.test.mts               # Unit tests (npm test)
 ├── next.config.ts               # MDX + remark/rehype wiring
 ├── tsconfig.json                # Strict configuration
 ├── ROADMAP.md                   # Full topic list; finished topics ticked
@@ -497,13 +536,8 @@ failing line; use ```` ```js ```` for JavaScript, which is not compiled.
 
 ## Last Development Work
 
-Phase 9 — Config + Professional (10 topics), plus a tooling commit before it. **The registry is now fully published.**
-
-**Verification (all green):** `typecheck` · `lint` · `check:content` -> 64 topics · 498 blocks · 23 option sets · 6 skipped · 192/192 claimed errors
-real · 0 problems · `build` -> 68 static pages · `check:pages` -> all 64 pages OK.
-
-**Probes:** ~25 config fixtures; error codes/messages captured from real runs; 8 type-level `Equal` assertions on `reading-complex-types` (incl. the
-dense vs readable `Handlers` equivalence, `Awaited` nesting, the `Omit` typo case); a repo-lint probe of common offences; a strict-subset migration fixture.
+Phase 10 — Review, Exercises & Capstone (see its entry under Completed Phases for the full list and verification numbers). The final
+documentation pass updated `README.md` (capstone, scripts, structure), `ROADMAP.md` (Phase 10 section) and this file.
 
 ---
 
@@ -526,12 +560,12 @@ dense vs readable `Handlers` equivalence, `Awaited` nesting, the `Omit` typo cas
 
 ## Next Recommended Action
 
-1. Run the site (`npm run dev`) and read `strictness-flags`, `compiler-errors` and `migrating-js-to-ts` — the three most practical for daily work.
-2. **Scroll a long page and tell me whether the right-hand table of contents highlights the current section** — it is the one feature never seen working.
-3. **Attempt Practice sections** from any level and share them; I will review them before showing solutions. (None have been submitted yet.)
-4. Run the checks yourself: `npm run typecheck && npm run lint && npm run check:content && npm run build`.
-5. Push when ready: `git push` (Phase 8 and later are local only).
-6. Say **"start Phase 10"** for the review, exercises and capstone.
+1. Run the site (`npm run dev`) and work through `/capstone` from the overview, typing the code yourself rather than copying it.
+2. **Scroll a long page and tell me whether the right-hand table of contents highlights the current section** — the one feature never seen working.
+3. **Attempt Practice sections** (see `/exercises`) and share them; I will review them before showing solutions. (None submitted yet.)
+4. Run the checks yourself: `npm run typecheck && npm run lint && npm run check:content && npm run check:links && npm test && npm run build`.
+5. Push when ready: `git push` (nothing has been pushed by me; several commits are local only).
+6. Optional: ask for any of the polish items listed under **Next Topic**.
 
 ---
 
@@ -553,3 +587,4 @@ dense vs readable `Handlers` equivalence, `Awaited` nesting, the `Omit` typo cas
 | 2026-10-17 | 8 | 6 API-typing topics; contract + pagination types asserted with Equal probes; Zod, query-builder and async-generator behaviour executed; one assertion replaced by a real guard. |
 | 2026-10-17 | - | Tooling: per-block compiler options via `// @option: value` (mutation-tested). Commit `152cb6a`. |
 | 2026-10-17 | 9 | 10 Config + Professional topics; every config claim measured on TS 5.9.3; error messages captured from real runs; **all 64 topics published**. |
+| 2026-10-17 | 10 | Cross-reference checker + links; full-text search; exercises page (165) with progress tracker; gate project mode; **capstone "The Orders Desk"** (8 pages, verified project) served at `/capstone` with navigation, search and checks. **All phases complete.** |

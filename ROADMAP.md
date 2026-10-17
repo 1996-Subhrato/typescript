@@ -117,6 +117,18 @@ Judgement calls rather than syntax.
 
 ---
 
+## Phase 10 — Review, exercises and capstone
+
+No new language topics. The course around the 64 topics:
+
+- **Cross-reference checker**: every italic title reference is a real link, and typos are caught ✅
+- **Full-text search**: titles, headings and prose, with heading deep-links ✅
+- **Exercises page**: all Practice exercises in one place with a saved progress tracker; no solutions ✅
+- **Capstone: The Orders Desk**: a multi-file typed project built in seven steps (domain, wire format,
+  contract, client, server, UI state machine, review), compiled as one project by the quality gate ✅
+
+---
+
 ## Why this order
 
 - **Narrowing before discriminated unions.** Discriminated unions are only useful once
