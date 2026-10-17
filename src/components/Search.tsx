@@ -96,7 +96,7 @@ export function Search() {
       return search(index, trimmed, 8).map(({ entry, heading, snippet }) => ({
         slug: entry.slug,
         title: entry.title,
-        href: heading ? `/docs/${entry.slug}#${heading.id}` : `/docs/${entry.slug}`,
+        href: heading ? `${entry.href}#${heading.id}` : entry.href,
         published: true,
         detail: `${entry.levelTitle} · ${snippet ?? entry.summary}`,
         heading: heading?.title,

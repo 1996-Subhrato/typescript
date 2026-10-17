@@ -26,6 +26,8 @@ function isEntry(value: unknown): value is SearchEntry {
     value !== null &&
     "slug" in value &&
     typeof value.slug === "string" &&
+    "href" in value &&
+    typeof value.href === "string" &&
     "title" in value &&
     typeof value.title === "string" &&
     "levelTitle" in value &&

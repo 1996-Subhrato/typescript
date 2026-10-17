@@ -19,8 +19,6 @@ import type { HeadingDepth, TocNode } from "@/types/docs";
  * separate from `lib/docs.ts`, which is imported by Client Components.
  */
 
-const CONTENT_DIR = path.join(process.cwd(), "src", "content");
-
 /** `## Heading` or `### Heading` — captures the hashes and the text. */
 const HEADING_RE = /^(#{2,3})\s+(.+?)\s*$/;
 
@@ -83,9 +81,14 @@ export function buildToc(source: string): readonly TocNode[] {
   return roots;
 }
 
+/** Where an MDX page lives: the topics, or the guided capstone. */
+export type ContentFolder = "content" | "capstone";
+
 export async function getTableOfContents(
   slug: string,
+  folder: ContentFolder = "content",
 ): Promise<readonly TocNode[]> {
-  const source = await readFile(path.join(CONTENT_DIR, `${slug}.mdx`), "utf8");
+  const directory = path.join(process.cwd(), "src", folder);
+  const source = await readFile(path.join(directory, `${slug}.mdx`), "utf8");
   return buildToc(source);
 }

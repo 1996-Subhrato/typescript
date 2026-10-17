@@ -79,6 +79,8 @@ export interface SearchHeading {
 /** One topic as the search index sees it: metadata, headings, and plain prose. */
 export interface SearchEntry {
   readonly slug: string;
+  /** Where the entry lives, e.g. `/docs/narrowing` or `/capstone/01-domain`. */
+  readonly href: string;
   readonly title: string;
   readonly levelTitle: string;
   readonly summary: string;
@@ -88,3 +90,14 @@ export interface SearchEntry {
 }
 
 export type SearchIndex = readonly SearchEntry[];
+
+/* -------------------------------------------------------------------------- */
+/* Capstone                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/** One page of the guided capstone build. These are not registry topics. */
+export interface CapstonePage {
+  readonly slug: string;
+  readonly title: string;
+  readonly summary: string;
+}

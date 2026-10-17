@@ -14,6 +14,7 @@ import type { SearchEntry } from "../src/types/docs.ts";
 
 function entry(overrides: Partial<SearchEntry> & Pick<SearchEntry, "slug" | "title">): SearchEntry {
   return {
+    href: `/docs/${overrides.slug}`,
     levelTitle: "Level",
     summary: "",
     headings: [],

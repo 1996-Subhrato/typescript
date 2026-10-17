@@ -20,6 +20,9 @@ export function SiteHeader() {
           <Link href="/exercises" className="hover:text-neutral-950 dark:hover:text-white">
             Exercises
           </Link>
+          <Link href="/capstone" className="hover:text-neutral-950 dark:hover:text-white">
+            Capstone
+          </Link>
         </nav>
         <div className="ml-auto flex items-center gap-3">
           <Search />

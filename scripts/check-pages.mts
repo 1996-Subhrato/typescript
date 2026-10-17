@@ -5,6 +5,7 @@
  *   - the table of contents links to exactly the headings that were rendered
  *   - previous/next navigation is present
  *   - every internal /docs/... link written in the article body points at a topic that exists
+ * It then checks the capstone pages the same way, plus the search index and the exercises page.
  *
  * Usage:
  *   npm run check:pages                       # every topic in src/content, localhost:3000
@@ -19,6 +20,7 @@ import { parseSearchIndex, search } from "../src/lib/search.ts";
 
 const BASE_URL = process.env["BASE_URL"] ?? "http://localhost:3000";
 const CONTENT_DIR = path.join(process.cwd(), "src", "content");
+const CAPSTONE_DIR = path.join(process.cwd(), "src", "capstone");
 
 function allSlugs(): string[] {
   return readdirSync(CONTENT_DIR)
@@ -83,6 +85,55 @@ console.log(
 );
 
 /**
+ * The capstone pages (`/capstone` and `/capstone/<step>`): same checks as a topic, but with the
+ * capstone navigation, and links may point at topics (`/docs/...`) or other capstone pages.
+ */
+async function checkCapstonePages(): Promise<number> {
+  const names = readdirSync(CAPSTONE_DIR)
+    .filter((file) => file.endsWith(".mdx"))
+    .map((file) => file.slice(0, -".mdx".length))
+    .sort();
+  let failed = 0;
+
+  for (const name of names) {
+    const href = name === "overview" ? "/capstone" : `/capstone/${name}`;
+    const response = await fetch(`${BASE_URL}${href}`);
+    const html = await response.text();
+
+    const headingIds = matchAll(html, /<h[23][^>]*id="([^"]+)"/g);
+    const nav = /aria-label="On this page".*?<\/nav>/s.exec(html)?.[0] ?? "";
+    const tocIds = matchAll(nav, /href="#([^"]+)"/g);
+    const article = /<article\b.*?<\/article>/s.exec(html)?.[0] ?? "";
+
+    const problems: string[] = [];
+    if (response.status !== 200) problems.push(`http=${response.status}`);
+    if (headingIds.some((id) => !tocIds.includes(id)) || tocIds.some((id) => !headingIds.includes(id))) {
+      problems.push("tocMismatch");
+    }
+    if (!html.includes('aria-label="Capstone navigation"')) problems.push("noPrevNext");
+    for (const target of matchAll(article, /href="\/docs\/([a-z0-9-]+)"/g)) {
+      if (!knownSlugs.has(target)) problems.push(`brokenTopicLink=${target}`);
+    }
+    for (const target of matchAll(article, /href="\/capstone\/([a-z0-9-]+)"/g)) {
+      if (!names.includes(target)) problems.push(`brokenCapstoneLink=${target}`);
+    }
+
+    if (problems.length > 0) failed += 1;
+    console.log(`${problems.length === 0 ? "OK  " : "FAIL"} ${href.padEnd(32)} toc=${tocIds.length} ${problems.join(" ")}`.trimEnd());
+  }
+
+  // /capstone/overview must not exist: the overview lives at /capstone.
+  const duplicate = await fetch(`${BASE_URL}/capstone/overview`);
+  if (duplicate.status !== 404) {
+    failed += 1;
+    console.log(`FAIL /capstone/overview should be 404 but is ${duplicate.status}`);
+  }
+
+  console.log(failed === 0 ? `CAPSTONE OK (${names.length} pages)` : `${failed} CAPSTONE CHECK(S) FAILED`);
+  return failed;
+}
+
+/**
  * The search index is served as JSON (`/search-index.json`). Check that it is valid, covers every
  * topic, and that a few real queries land on the right page. Skipped when specific slugs were asked
  * for, since it is not about any one page.
@@ -103,6 +154,14 @@ async function checkSearchIndex(): Promise<number> {
   if (missing.length > 0) {
     failed += 1;
     console.log(`FAIL search index is missing topics: ${missing.join(", ")}`);
+  }
+  const capstoneNames = readdirSync(CAPSTONE_DIR)
+    .filter((file) => file.endsWith(".mdx"))
+    .map((file) => file.slice(0, -".mdx".length));
+  const missingCapstone = capstoneNames.filter((name) => !indexed.has(`capstone/${name}`));
+  if (missingCapstone.length > 0) {
+    failed += 1;
+    console.log(`FAIL search index is missing capstone pages: ${missingCapstone.join(", ")}`);
   }
 
   // [query, a slug that must be the top hit]
@@ -168,6 +227,8 @@ async function checkExercisesPage(): Promise<number> {
   return failed;
 }
 
+const capstoneFailures = requested.length === 0 ? await checkCapstonePages() : 0;
 const searchFailures = requested.length === 0 ? await checkSearchIndex() : 0;
 const exerciseFailures = requested.length === 0 ? await checkExercisesPage() : 0;
-process.exitCode = failures === 0 && searchFailures === 0 && exerciseFailures === 0 ? 0 : 1;
+process.exitCode =
+  failures === 0 && capstoneFailures === 0 && searchFailures === 0 && exerciseFailures === 0 ? 0 : 1;
