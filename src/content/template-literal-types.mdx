@@ -1,0 +1,163 @@
+# Template Literal Types
+
+## What
+
+Template literal types use the same backtick syntax as JavaScript template strings, but
+in a **type position**. They build string types from other string types.
+
+```ts
+type Greeting = `Hello, ${string}`;
+
+const a: Greeting = "Hello, Ada";
+const b: Greeting = "Hi, Ada"; // Error: '"Hi, Ada"' does not match the template
+```
+
+The type `Greeting` is "any string that starts with `Hello, `".
+
+## Combining unions
+
+When a placeholder is a union, TypeScript produces **every combination**.
+
+```ts
+type Entity = "user" | "order" | "product";
+type Action = "created" | "updated" | "deleted";
+
+type EventName = `${Entity}:${Action}`;
+// "user:created" | "user:updated" | "user:deleted" | "order:created" | ... (9 in total)
+
+function track(event: EventName): void {
+  console.log(event);
+}
+
+track("order:updated");
+track("order:shipped"); // Error: '"order:shipped"' is not assignable to 'EventName'
+```
+
+Three entities times three actions is nine event names, with no hand-written list.
+
+## Real-world examples
+
+```ts
+type CssLength = `${number}px` | `${number}rem` | `${number}%`;
+
+const width: CssLength = "24rem";
+const bad: CssLength = "24em"; // Error: '"24em"' is not assignable to 'CssLength'
+```
+
+```ts
+type ApiVersion = "v1" | "v2";
+type Resource = "users" | "orders";
+
+type Endpoint = `/api/${ApiVersion}/${Resource}`;
+
+async function request(endpoint: Endpoint): Promise<Response> {
+  return fetch(endpoint);
+}
+
+request("/api/v2/orders");
+request("/api/v3/orders"); // Error: '"/api/v3/orders"' is not assignable to 'Endpoint'
+```
+
+```ts
+type CssVar = `--${string}`;
+
+function setVar(name: CssVar, value: string): void {
+  document.documentElement.style.setProperty(name, value);
+}
+```
+
+## Built-in string helpers
+
+Four intrinsic types transform string literals:
+
+| Type | `Hello World` becomes |
+| ---- | --------------------- |
+| `Uppercase<S>` | `HELLO WORLD` |
+| `Lowercase<S>` | `hello world` |
+| `Capitalize<S>` | `Hello World` (first letter up) |
+| `Uncapitalize<S>` | `hello World` (first letter down) |
+
+```ts
+type Status = "pending" | "paid";
+
+type StatusLabel = Capitalize<Status>; // "Pending" | "Paid"
+type StatusConstant = Uppercase<Status>; // "PENDING" | "PAID"
+```
+
+## Generating keys: mapped types plus `as`
+
+Combining template literals with the key remapping from the last topic generates whole
+APIs from a single type.
+
+```ts
+type Getters<T> = {
+  [K in keyof T & string as `get${Capitalize<K>}`]: () => T[K];
+};
+
+type User = { id: number; name: string };
+
+type UserGetters = Getters<User>;
+// { getId: () => number; getName: () => string }
+
+const getters: UserGetters = {
+  getId: () => 1,
+  getName: () => "Ada",
+};
+```
+
+`keyof T & string` narrows the keys to strings, because `Capitalize` only accepts
+strings and a key could also be a `number` or `symbol`.
+
+### Event handlers from a state shape
+
+```ts
+type State = { theme: string; pageSize: number };
+
+type ChangeHandlers<T> = {
+  [K in keyof T & string as `on${Capitalize<K>}Change`]: (value: T[K]) => void;
+};
+
+const handlers: ChangeHandlers<State> = {
+  onThemeChange: (value) => console.log(value.toUpperCase()), // value: string
+  onPageSizeChange: (value) => console.log(value + 1), // value: number
+};
+```
+
+## `infer` inside a template
+
+Conditional types can pattern-match strings.
+
+```ts
+type ExtractParams<Path extends string> =
+  Path extends `${string}:${infer Param}/${infer Rest}`
+    ? Param | ExtractParams<`/${Rest}`>
+    : Path extends `${string}:${infer Param}`
+      ? Param
+      : never;
+
+type Params = ExtractParams<"/users/:userId/posts/:postId">;
+// "userId" | "postId"
+
+const first: Params = "userId";
+const unknownParam: Params = "slug"; // Error: '"slug"' is not assignable to '"userId" | "postId"'
+```
+
+This is the idea behind typed routers: the path string *is* the type. The type calls
+itself — recursion, the next topic.
+
+## Common mistakes
+
+- **Using `string` where a pattern would do.** `` `/api/${string}` `` rejects values that do
+  not start with `/api/`, which `string` accepts.
+- **Combinatorial explosion.** Three unions of 10 members make 1,000 members. The compiler
+  caps a generated union at 100,000 members, and large ones slow the editor long before that.
+- **Forgetting `& string`** when using `keyof T` inside a template.
+- **Expecting runtime behaviour.** These are types; the compiler checks literals and does
+  not transform values.
+
+## Practice
+
+1. Define ``type Route = `/${string}` `` and a function `navigate(route: Route)`. Confirm
+   `navigate("home")` fails.
+2. Write `Setters<T>` generating `setName`, `setAge`, ... with the correct parameter type.
+3. Write ``type Cents<N extends number> = `${N}c` `` and see what `Cents<5>` produces.

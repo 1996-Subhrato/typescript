@@ -1,0 +1,161 @@
+# Structural Typing & Compatibility
+
+## What
+
+TypeScript decides whether one type fits another by comparing their **shapes**, not
+their names. If a value has everything the target type requires, it is assignable —
+whatever it was declared as. This is *structural typing*, often called duck typing.
+
+Java and C# are *nominal*: `Dog` is only an `Animal` if it says `extends Animal`.
+
+```ts
+type Point2D = { x: number; y: number };
+type Vector = { x: number; y: number }; // different name, same shape
+
+const origin: Point2D = { x: 0, y: 0 };
+const direction: Vector = origin; // fine — identical structure
+```
+
+## Extra properties are fine
+
+A value may have **more** than required. It may not have less.
+
+```ts
+type Named = { name: string };
+
+type Employee = { name: string; salary: number; department: string };
+
+const ada: Employee = { name: "Ada", salary: 100, department: "Eng" };
+const label: Named = ada; // OK: Employee has everything Named requires
+
+function greet(entity: Named): string {
+  return `Hello, ${entity.name}`;
+}
+
+greet(ada); // OK
+greet({ salary: 100 }); // Error: Property 'name' is missing
+```
+
+The only exception is the *excess property check* on fresh object literals
+(*Object Types*), which exists to catch typos, not as a nominal rule.
+
+## Why it matters in practice
+
+- **Functions accept anything that fits**, so tests can pass a small fake instead of the
+  real thing.
+- **Interfaces are satisfied implicitly**: a class does not need `implements` for its
+  instances to be assignable.
+- **Unrelated libraries interoperate** when their types happen to share a shape.
+
+```ts
+interface Logger {
+  log(message: string): void;
+}
+
+class ConsoleLogger {
+  log(message: string): void {
+    console.log(message);
+  }
+}
+
+function run(logger: Logger): void {
+  logger.log("started");
+}
+
+run(new ConsoleLogger()); // no `implements` needed
+run({ log: (message) => console.log(message) }); // a plain object works too
+```
+
+## Assignability of functions
+
+Functions are compared by their parameters and return type.
+
+```ts
+type Animal = { name: string };
+type Dog = { name: string; breed: string };
+
+// Return types are COVARIANT: a function returning a Dog can stand in for one returning an Animal
+const makeDog: () => Dog = () => ({ name: "Rex", breed: "Lab" });
+const makeAnimal: () => Animal = makeDog; // OK
+const backwards: () => Dog = makeAnimal; // Error: 'Animal' is missing 'breed'
+```
+
+```ts
+type Animal = { name: string };
+type Dog = { name: string; breed: string };
+
+// Parameter types are CONTRAVARIANT: a function accepting any Animal can handle a Dog
+type Handler<T> = (value: T) => void;
+
+const handleAnimal: Handler<Animal> = (animal) => console.log(animal.name);
+const handleDog: Handler<Dog> = handleAnimal; // OK
+const backwards: Handler<Animal> = handleDog; // Error: a Dog handler needs 'breed'
+```
+
+The rule of thumb: **outputs may be more specific; inputs may be more general.** This is
+variance, and it follows from asking "can this safely be used where that is expected?".
+
+(That contravariant error is enabled by `strictFunctionTypes`, part of `strict`.)
+
+## Where the rules are looser than they look
+
+### Arrays are covariant — and unsound
+
+```ts
+type Animal = { name: string };
+type Dog = { name: string; breed: string };
+
+const dogs: Dog[] = [{ name: "Rex", breed: "Lab" }];
+const animals: Animal[] = dogs; // allowed
+animals.push({ name: "Whiskers" }); // compiles, but now `dogs` contains a non-Dog
+```
+
+TypeScript trades perfect soundness for convenience here. `readonly Animal[]` is safe,
+which is another reason to mark parameters `readonly`.
+
+### Method syntax is bivariant
+
+Declaring a function as a *method* skips the strict parameter check that a function-typed
+*property* gets.
+
+```ts
+type Animal = { name: string };
+type Dog = { name: string; breed: string };
+
+type MethodSaver<T> = { save(item: T): void };
+type PropertySaver<T> = { save: (item: T) => void };
+
+const dogMethod: MethodSaver<Dog> = { save: (dog) => console.log(dog.breed) };
+const animalMethod: MethodSaver<Animal> = dogMethod; // allowed: methods are bivariant
+
+const dogProperty: PropertySaver<Dog> = { save: (dog) => console.log(dog.breed) };
+const animalProperty: PropertySaver<Animal> = dogProperty; // Error: stricter check applies
+```
+
+This exists because many real-world DOM and library types rely on the looser rule.
+
+## Making a type effectively nominal
+
+Sometimes shape alone is not enough: `UserId` and `OrderId` are both numbers, yet must
+never be swapped.
+
+- A `private` member in a class makes it incompatible with look-alikes.
+- **Branded types** (next topic) fake nominal typing for plain values.
+
+## Common mistakes
+
+- **Expecting a name to matter.** `type A = { id: number }` and `type B = { id: number }`
+  are the same type to the compiler.
+- **Assuming `implements` is required.** It only adds a check that you meant to comply.
+- **Being surprised by unsound array assignments.** Prefer `readonly` arrays for inputs.
+- **Using `{ [key: string]: unknown }` as a catch-all.** Almost any object is assignable
+  to it, so it constrains nothing.
+
+## Practice
+
+1. Make `Circle = { radius: number }` and `Cylinder = { radius: number; height: number }`.
+   Which can be passed where the other is expected? Predict, then test.
+2. Write a function that takes `Logger` and run it with an object literal that has an
+   extra property. Why does it behave differently from assigning a variable?
+3. Explain in one sentence why `() => Dog` is assignable to `() => Animal` but
+   `(d: Dog) => void` is *not* assignable to `(a: Animal) => void`.

@@ -1,0 +1,156 @@
+# Conditional Types & infer
+
+## What
+
+A conditional type chooses between two types, based on a check — an `if` expression at
+the type level.
+
+```ts
+type IsString<T> = T extends string ? true : false;
+
+type A = IsString<"hello">; // true
+type B = IsString<42>; // false
+```
+
+`T extends U ? X : Y` reads: *if `T` is assignable to `U`, the result is `X`; otherwise
+`Y`*.
+
+Several built-in utilities from the previous topic are conditional types. Understanding
+them demystifies most "scary" TypeScript you will read.
+
+```ts
+type MyNonNullable<T> = T extends null | undefined ? never : T;
+type MyExclude<T, U> = T extends U ? never : T;
+type MyExtract<T, U> = T extends U ? T : never;
+
+type Clean = MyNonNullable<string | null | undefined>; // string
+```
+
+## It distributes over unions
+
+When the checked type is a bare type parameter and you pass a union, TypeScript applies
+the condition to **each member** separately and unions the results.
+
+```ts
+type ToArray<T> = T extends unknown ? T[] : never;
+
+type Arrays = ToArray<string | number>;
+// string[] | number[]   (NOT (string | number)[])
+```
+
+That is why `Exclude<"a" | "b" | "c", "a">` works: each member is tested on its own;
+the matching one becomes `never`, which vanishes from a union.
+
+To stop distribution, wrap both sides in a tuple:
+
+```ts
+type ToArrayWhole<T> = [T] extends [unknown] ? T[] : never;
+
+type OneArray = ToArrayWhole<string | number>; // (string | number)[]
+```
+
+## `infer`: capture part of a type
+
+`infer X` declares a type variable *inside* the `extends` check. If the check passes,
+`X` holds whatever matched that position.
+
+```ts
+type ElementOf<T> = T extends (infer Item)[] ? Item : never;
+
+type Tag = ElementOf<string[]>; // string
+type Row = ElementOf<{ id: number }[]>; // { id: number }
+```
+
+Read it as a pattern match: *"if `T` looks like an array of something, call that
+something `Item` and return it."*
+
+### Rebuilding `ReturnType` and `Awaited`
+
+```ts
+type MyReturnType<F> = F extends (...args: never[]) => infer R ? R : never;
+
+type MyParameters<F> = F extends (...args: infer P) => unknown ? P : never;
+
+type Unwrap<T> = T extends Promise<infer Inner> ? Inner : T;
+
+function getUser(id: number) {
+  return { id, name: "Ada" };
+}
+
+type U = MyReturnType<typeof getUser>; // { id: number; name: string }
+type P = MyParameters<typeof getUser>; // [id: number]
+type V = Unwrap<Promise<string>>; // string
+```
+
+That is the whole of `ReturnType` — a conditional type with one `infer`.
+
+### Several `infer`s
+
+```ts
+type PairOf<T> = T extends [infer First, infer Second] ? { first: First; second: Second } : never;
+
+type Point = PairOf<[number, string]>; // { first: number; second: string }
+```
+
+## Real-world example: API result types
+
+```ts
+type ApiSuccess<T> = { ok: true; data: T };
+type ApiFailure = { ok: false; error: string };
+type ApiResult<T> = ApiSuccess<T> | ApiFailure;
+
+// Pull the payload type back out of a result type
+type DataOf<R> = R extends ApiSuccess<infer D> ? D : never;
+
+type UsersResult = ApiResult<{ id: number; name: string }[]>;
+type Users = DataOf<UsersResult>; // { id: number; name: string }[]
+```
+
+## Testing a type
+
+You can assert what a type is with an assignment. If the type is wrong, compilation
+fails.
+
+```ts
+type ElementOf<T> = T extends (infer Item)[] ? Item : never;
+
+const ok: ElementOf<string[]> = "tag"; // fine
+const wrong: ElementOf<string[]> = 42; // Error: 'number' is not assignable to 'string'
+```
+
+## Conditional return types: use sparingly
+
+It is tempting to type a function's *return* with a conditional on its input. The
+declaration works; the body does not check against it.
+
+```ts
+function double<T extends string | number>(value: T): T extends string ? string : number {
+  const result = typeof value === "string" ? value + value : (value as number) * 2;
+  return result as T extends string ? string : number; // the assertion is unavoidable
+}
+
+const a = double("ab"); // string
+const b = double(21); // number
+```
+
+Callers get the right type; the implementation needs a cast because the compiler cannot
+prove the branches match. Overloads are usually clearer for two or three cases.
+
+## Common mistakes
+
+- **Forgetting distribution.** `IsString<string | number>` is `boolean`, not `false`,
+  because it is `true | false`.
+- **`any` instead of `never` in function patterns.** `(...args: never[]) => infer R`
+  accepts any function without the `any` escape hatch.
+- **Deeply nested conditionals.** If a type needs four levels of `extends`, reconsider the
+  design; the next person must read it.
+- **Using them where a union or overload is enough.**
+
+## Practice
+
+1. Write `Flatten<T>`: `Flatten<string[]>` is `string`, `Flatten<number>` is `number`.
+2. Write `FunctionKeys<T>` using a conditional type that gives the keys of `T` whose
+   values are functions. (Hint: you will need a mapped type — the next topic. Try first,
+   then come back.)
+3. Predict `IsString<string | number>` before running it. Then wrap it to get a
+   non-distributive `false`.

@@ -9,19 +9,17 @@
 
 ## Current Phase
 
-**Phase 3 — Practical TypeScript** &nbsp;·&nbsp; Status: ✅ **Complete**
+**Phase 4 — Advanced Types** &nbsp;·&nbsp; Status: ✅ **Complete**
 
 ## Current Topic
 
-None in progress. Levels 1 and 2 (Fundamentals + Practical) are fully written.
+None in progress. Levels 1-3 (Fundamentals, Practical, Advanced Types) are fully written.
 
 ## Current Status
 
-Awaiting user go-ahead to begin **Phase 4 — Advanced Types**.
-
-The user asked for Phases 2 and 3 in a single request and they were built back to back
-as two separate, individually verified phases. Default behaviour still stands: **one
-phase per session, then stop** — unless the user explicitly asks for more.
+The user asked for Phases 4, 5, 6 and 7 in one request; they are being built back to back as
+separate, individually verified and individually committed phases. Phase 4 is done and committed.
+Default behaviour still stands: **one phase per request, then stop**, unless the user asks for more.
 
 ---
 
@@ -90,13 +88,37 @@ Current result across all 20 published topics: **150 blocks · 47 expected-error
 (removing a real `// Error` marker → `UNEXPECTED`; adding a false one → `STALE CLAIM`).
 It also caught two defects in the Phase 0 page, which were fixed.
 
+### Phase 4 — Advanced Types ✅
+
+Ten topics written; **Level 3 is 10/10**: `utility-types-objects`, `utility-types-unions`,
+`conditional-types`, `mapped-types`, `template-literal-types`, `recursive-types`,
+`structural-typing`, `branded-types`, `result-types`, `declaration-files`.
+
+Covers every Level 3 syllabus keyword (all utility types incl. `Awaited`, conditional types,
+`infer`, mapped types and modifiers, key remapping, template literal types, recursive types,
+type-level transformations, structural typing, compatibility, variance basics, branded types,
+discriminated state modelling, `Result` types, declaration merging, module/global augmentation,
+`.d.ts`, ambient declarations, `declare`, third-party typing).
+
+**Promises from earlier phases honoured:** `Partial` and `Record` are taught first in
+`utility-types-objects`; `DeepPartial` is built in `recursive-types`.
+
+**Tooling added this phase (commit `fe0f31e`):** the gate now compiles `tsx`, resolves `react` /
+`express` / `zod` / `next`, supports a counted `{/* check:skip */}` marker, and `npm run check:pages`
+smoke-tests rendered pages. Dev dependencies `@types/express` and `zod` were added solely so
+documentation examples can be type-checked.
+
+**Gate hardening found by a real failure:** `next build` crashed on `${string}` written inside a
+nested-backtick inline code span (MDX read it as a live expression). The gate only compiled code,
+so it could not see it. It now also lints prose for stray `{ }` and `<tag`, regression-tested by
+reintroducing the exact bug.
+
 ---
 
 ## Pending Phases
 
 | Phase | Name | Topics | Notes |
 | ----- | ---- | ------ | ----- |
-| 4 | Advanced Types | 10 | Split into 4a (5 topics) + 4b (5 topics) if it runs long |
 | 5 | React + TypeScript | 7 | |
 | 6 | Node.js + Express | 6 | |
 | 7 | Next.js + TypeScript | 5 | Uses this repo as the worked example |
@@ -106,47 +128,50 @@ It also caught two defects in the Phase 0 page, which were fixed.
 
 Full topic list: [`ROADMAP.md`](./ROADMAP.md). Machine-readable version: `src/lib/registry.ts`.
 
-**Content progress: 20 / 64 topics published** (Level 1: 11/11 · Level 2: 9/9 · rest 0).
+**Content progress: 30 / 64 topics published** (Level 1: 11/11 · Level 2: 9/9 · Level 3: 10/10 · rest 0).
 
 ---
 
 ## Next Topic
 
-**Phase 4 — Advanced Types.** Ten topics, in registry order:
+**Phase 5 — React + TypeScript.** Seven topics, in registry order:
 
-1. `utility-types-objects` — `Partial`, `Required`, `Readonly`, `Pick`, `Omit`, `Record`
-2. `utility-types-unions` — `Exclude`, `Extract`, `NonNullable`, `ReturnType`, `Parameters`, `ConstructorParameters`, `InstanceType`
-3. `conditional-types` — `T extends U ? X : Y`, distribution, `infer`
-4. `mapped-types` — `[K in keyof T]`, `readonly`/`?` modifiers (`+`/`-`), key remapping with `as`
-5. `template-literal-types` — string manipulation at the type level
-6. `recursive-types` — JSON, `DeepPartial`, nested key paths
-7. `structural-typing` — shape over name, assignability, variance basics
-8. `branded-types` — `UserId` vs `OrderId`
-9. `result-types` — modelling failure in types (`Result<T, E>`)
-10. `declaration-files` — `.d.ts`, `declare`, ambient declarations, declaration merging, module augmentation, typing third-party libraries
+1. `react-props` — typing props, `children` (`ReactNode`), `ComponentProps<"button">` to extend native elements, discriminated prop contracts, `FC` vs plain functions
+2. `react-state` — `useState` inference vs `useState<User | null>(null)`, functional updates, `useReducer` with a discriminated action union
+3. `react-refs-context` — `useRef<HTMLInputElement>(null)` vs mutable refs, React 19 `ref` as a prop, `createContext` + a guard hook so consumers never null-check
+4. `react-events-forms` — `ChangeEvent`, `FormEvent`, `MouseEvent`, `FormData`, controlled inputs, typed form state
+5. `react-custom-hooks` — tuple vs object returns (`as const`), generic hooks (`useLocalStorage<T>`), `useDebounce<T>`
+6. `react-generic-components` — `List<T>`, `Table<T>` with `keyof`, `Select<T>`; generics in TSX
+7. `react-async-data` — loading/error/success as a discriminated union; ties back to `discriminated-unions` and `result-types`
 
-**Suggested split if long:** 4a = topics 1–5 (transforming types), 4b = topics 6–10
-(modelling with types). Record the last completed slug here if it is split.
+**React 19 specifics the content must get right** (installed: `react` 19.2.8, `@types/react` 19.2.18):
+`useRef` now requires an argument; `ref` is an ordinary prop (no `forwardRef` needed); the global
+`JSX` namespace is gone (use `React.JSX` / `ReactElement`); `FC` no longer implies `children`;
+`useActionState` and `use` exist. Verify each against the installed types, not memory.
 
-**Process per topic:** write `src/content/<slug>.mdx`, run `npm run check:content -- <slug>`,
-flip the topic's `status` to `"published"` in `src/lib/registry.ts`, then `tsc` / `eslint` / `next build`.
+**Process per topic:** write `src/content/<slug>.mdx` (use ` ```tsx ` for components), run
+`npm run check:content -- <slug>`, then at the end of the phase flip statuses in `src/lib/registry.ts`.
+**Run `npm run build` before committing** — the gate cannot see render-time MDX errors beyond its prose lint.
 
-### Promises the existing content makes about Phase 4 (must be honoured)
+### Later phases at a glance
 
-- `generic-constraints` calls `Partial<T>` "the first utility type in the next level" and
-  uses it in an example before it has been taught — `utility-types-objects` must open with it.
-- `discriminated-unions` uses `Record<string, number>` and says it is "covered in *Utility Types*".
-- `generic-constraints` teaches `keyof` / `typeof` / `T[K]`; mapped and conditional types may
-  now assume them. Do not re-teach.
-- `unions-and-literals` and `enums-and-as-const` introduced `as const`; `recursive-types` and
-  `template-literal-types` may build on it.
+| Phase | Topics |
+| ----- | ------ |
+| 6 Node + Express | `express-request-response`, `express-middleware`, `express-layers`, `dtos-and-validation`, `env-and-config`, `database-models` (`@types/express` 5.0.6 and `zod` 4.6.7 are installed for verification) |
+| 7 Next.js | `nextjs-pages-layouts`, `nextjs-server-client`, `nextjs-route-handlers`, `nextjs-server-actions`, `nextjs-config` — read `node_modules/next/dist/docs/` first (AGENTS.md) |
 
-### Forward references elsewhere (for later phases)
+### Forward references the Phase 4 content makes
 
-`type-assertions` → *unknown at the Boundary* (Phase 8) · `generics-basics` → *A Generic
-API Client* (Phase 8) · `type-guards` → *DTOs & Runtime Validation* (Phase 6) ·
-`type-aliases-and-interfaces` → *interface vs type in Practice* (Phase 9) ·
-`abstract-and-interfaces` → repository/service layers (Phase 6).
+`result-types` → *Error Modelling* (Phase 8) and *DTOs & Runtime Validation* (Phase 6) ·
+`declaration-files` → *Middleware & Error Handling* (Phase 6, `Request` augmentation) ·
+`branded-types` → *Database Models* (Phase 6, branded ids) · `structural-typing` → fake/test doubles in
+*Controllers, Services, Repositories* (Phase 6).
+
+### Earlier forward references (still open)
+
+`type-assertions` → *unknown at the Boundary* (Phase 8) · `generics-basics` → *A Generic API Client*
+(Phase 8) · `type-guards` → *DTOs & Runtime Validation* (Phase 6) · `type-aliases-and-interfaces` →
+*interface vs type in Practice* (Phase 9) · `abstract-and-interfaces` → repository/service layers (Phase 6).
 
 ---
 
@@ -231,6 +256,21 @@ show an idiomatic solution. Phase 10 should consolidate these into a graded set.
     - Model states as **discriminated unions**, not bags of optional fields; end `switch`es with
       an `assertNever` default.
 
+17. **The gate also lints prose for MDX hazards.** *(Phase 4)* In MDX a stray `{...}` or `<Tag` outside
+    code is evaluated/parsed as JavaScript/JSX. A `${string}` inside a nested-backtick inline span crashed
+    `next build` while every code block compiled. `check-content` now strips fences and inline code and
+    flags what remains. To write backticks inside inline code use a double-backtick span:
+    ``` `` `/api/${string}` `` ```. Always run `npm run build` before committing content.
+
+18. **Type-level result comments are not machine-checked by the gate.** *(Phase 4)* The gate proves
+    claimed *errors*; it cannot prove a comment like `// "userId" | "postId"`. Before publishing type-level
+    topics, assert the claims with an ad-hoc `Equal<A, B>` probe (and a negative control that must fail).
+    16 claims were verified this way in Phase 4. Consider a permanent mechanism if this recurs.
+
+19. **Scratch files for checks live in `node_modules/.cache/`.** *(Phases 4+)* It resolves `react`,
+    `express`, `zod` and `next`, is excluded from the project tsconfig, ESLint and git, and is deleted
+    after every run.
+
 ---
 
 ## Project Architecture
@@ -247,7 +287,7 @@ D:\TypeScript
 │   │       └── [slug]/page.tsx  # Renders one MDX topic + TOC + prev/next
 │   ├── components/              # SiteHeader, Sidebar, MobileNav, Search,
 │   │                            # TableOfContents, PrevNextNav, CodeBlock
-│   ├── content/                 # 20 MDX topics — one file per registry slug
+│   ├── content/                 # 30 MDX topics — one file per registry slug
 │   ├── lib/
 │   │   ├── registry.ts          # Source of truth: levels, topics, order, status
 │   │   ├── docs.ts              # Derived helpers — SAFE for client components
@@ -255,7 +295,8 @@ D:\TypeScript
 │   ├── types/docs.ts            # Navigation model + recursive TocNode
 │   └── mdx-components.tsx       # Global MDX overrides (pre -> CodeBlock)
 ├── scripts/
-│   └── check-content.mts        # Content quality gate (npm run check:content)
+│   ├── check-content.mts        # Content gate: compiles code, lints MDX prose
+│   └── check-pages.mts          # Page smoke test (needs a running server)
 ├── next.config.ts               # MDX + remark/rehype wiring
 ├── tsconfig.json                # Strict configuration
 ├── ROADMAP.md                   # Full topic list; finished topics ticked
@@ -289,67 +330,49 @@ failing line; use ```` ```js ```` for JavaScript, which is not compiled.
 
 ## Last Development Work
 
-Phases 2 and 3 in one session: 19 new MDX topics, the content gate, and its migration into
-the project as TypeScript.
+Phase 4 — Advanced Types (10 topics), plus a tooling commit before it.
 
-**Verification run (all green):**
-- `npm run check:content` → 20 topics · 150 blocks · 47/47 claimed errors real · 0 problems
-- `npx tsc --noEmit` → 0 errors (includes `scripts/check-content.mts`)
-- `npx eslint .` → 0 problems
-- `npx next build` → success, 24 static pages
-- All 20 topic pages fetched from the dev server: HTTP 200, TOC ↔ heading-ID parity exact,
-  prev/next present on every page, 0 browser console errors
-- Sidebar: 20 published links + 44 planned = 64; prev/next at the Level 2 → Level 3 boundary
-  correctly shows "Utility Types: Objects — Not written yet"
+**Verification (all green):** `npm run typecheck` · `npm run lint` · `npm run check:content` →
+30 topics · 228 blocks · 2 skipped (`.d.ts` script files) · 76/76 claimed errors real · 0 problems ·
+`npm run build` → 34 static pages · `npm run check:pages` → all 30 pages OK (200, TOC↔heading parity,
+prev/next present).
 
-**Defects found by the gate and fixed:** Phase 0's `what-is-typescript` had an unmarked
-expected error and a snippet using undeclared `User`/`res`; one `// Error` comment in
-`narrowing` meant the `Error` class and was reworded.
+**Type-level claims:** 16 result-type comments (`Paths`, `ExtractParams`, `PathValue`, `Getters`, the
+9-member event union, `ToArray` distribution, `Parameters`/`ReturnType` of a real function, ...) were
+asserted with an `Equal` probe, with a negative control that failed as it should. All held.
+
+**Prose corrected during review:** the TS recursion-depth figures (≈100, 1,000 for tail recursion), the
+union-size cap (100,000), and a malformed error-message comment.
+
+**Defect found and fixed:** the `${string}` MDX crash described in decision #17.
 
 ---
 
 ## Issues / Blockers
 
 - None blocking.
-- **Scroll-spy is still unverified.** The TOC's `IntersectionObserver` highlighting could not
-  be tested: the in-app browser pane does not composite frames, and IntersectionObserver
-  delivery depends on rendering. A control observer also fired zero callbacks, which points to
-  the environment rather than the code — but the feature has never been seen working.
-  **Please eyeball it** on a long page such as `narrowing`.
-- **Prose claims are not machine-checked.** The gate verifies code, not sentences. Claims such
-  as "Node's type stripping cannot run enums" or "TS 5.5 infers type predicates" were written
-  from knowledge and are worth a skim.
-- Screenshots / smooth-scroll unavailable in the preview pane; visual/design review is on the user.
-- **Git:** repository initialised on `main`; Phases 0-3 are in baseline commit `9bec822`.
-  `origin` is configured but **nothing has been pushed** (not requested). From Phase 4 on,
-  commit once per phase. Windows prints LF->CRLF warnings; a `.gitattributes`
-  (`* text=auto eol=lf`) would silence them if wanted.
+- **Scroll-spy is still unverified.** The TOC's `IntersectionObserver` highlighting has never been seen
+  working: the in-app browser pane does not composite frames. Please eyeball it on a long page.
+- **Prose claims are not machine-checked** (see decision #18 for type-level comments). Claims like
+  "Node's type stripping cannot run enums" come from knowledge — skim them.
+- **`npm audit` reports high-severity advisories in the dev toolchain** (`braces`, `brace-expansion`,
+  `micromatch`, `fast-glob` via ESLint). Not runtime dependencies. The only offered fix is `--force`,
+  which would downgrade `eslint-config-next` to v14 — a breaking change, deliberately not applied.
+  A non-breaking `npm audit fix` may resolve part of it; try it when convenient.
+- Screenshots / smooth-scroll are unavailable in the preview pane; visual/design review is on the user.
+- **Git:** baseline `9bec822` plus one commit per phase since. `origin` is configured but **nothing has
+  been pushed** (not requested). Windows prints LF→CRLF warnings; a `.gitattributes` would silence them.
 
 ---
 
 ## Next Recommended Action
 
-1. Run the site and read a few pages as a reader would:
-
-   ```bash
-   npm run dev
-   ```
-
-   Suggested: `narrowing`, `discriminated-unions`, `generic-constraints` (the densest three).
-   Scroll one and confirm the right-hand TOC highlights the current section.
-
-2. **Attempt the Practice sections** — especially `narrowing`, `discriminated-unions` and
-   `generics-basics`. Show me your answers; I'll review them before showing solutions.
-
-3. Run the gate yourself:
-
-   ```bash
-   npm run check:content
-   ```
-
-4. Optionally push the baseline commit: `git push -u origin main`.
-
-5. Say **"start Phase 4"** to begin Advanced Types.
+1. Run the site: `npm run dev`. Read `conditional-types`, `mapped-types` and `recursive-types` (the densest).
+2. **Attempt the Practice sections** — the Level 3 ones are hard on purpose. Share attempts and I will review
+   them before showing solutions.
+3. Run the checks yourself: `npm run typecheck && npm run lint && npm run check:content && npm run build`.
+4. Optionally push: `git push -u origin main`.
+5. Continue with **Phase 5 — React + TypeScript** (if not already built in this session).
 
 ---
 
@@ -363,3 +386,5 @@ expected error and a snippet using undeclared `User`/`res`; one `// Error` comme
 | 2026-10-17 | 2 | 10 Level 1 topics. Built the content compile gate; fixed 2 defects it found in Phase 0 content. |
 | 2026-10-17 | 3 | 9 Level 2 topics. Moved the gate into `scripts/` as TypeScript + `npm run check:content`; mutation-tested it. |
 | 2026-10-17 | - | Initialised git, baseline commit `9bec822`. Rewrote `README.md` (curriculum table, scripts, quality gate, how to add a topic). Added `npm run typecheck` (`next typegen && tsc --noEmit`) because bare `tsc` fails on a fresh clone. |
+| 2026-10-17 | - | Tooling: gate compiles `tsx`, resolves react/express/zod/next, counted skip marker; `check:pages` added. Commit `fe0f31e`. |
+| 2026-10-17 | 4 | 10 Advanced Types topics; prose lint added to the gate after an MDX render crash; 16 type-level claims asserted with an Equal probe. |

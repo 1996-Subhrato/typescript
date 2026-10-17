@@ -1,0 +1,148 @@
+# Branded Types
+
+## What
+
+A branded type makes two structurally identical types **incompatible on purpose**. It
+is the standard way to get nominal typing — "a `UserId` is not an `OrderId`" — in a
+structural type system.
+
+## The problem
+
+```ts
+type UserId = number;
+type OrderId = number;
+
+function getUser(id: UserId): string {
+  return `user:${id}`;
+}
+
+const orderId: OrderId = 9001;
+getUser(orderId); // compiles — both are just number
+```
+
+Nothing stops a swapped argument. IDs, currencies, validated strings and units are all
+"just primitives" that cause real bugs when mixed up.
+
+## The pattern
+
+Intersect the primitive with a phantom property that exists only in the type system.
+
+```ts
+declare const brand: unique symbol;
+
+type Brand<T, Name extends string> = T & { readonly [brand]: Name };
+
+type UserId = Brand<number, "UserId">;
+type OrderId = Brand<number, "OrderId">;
+
+function getUser(id: UserId): string {
+  return `user:${id}`;
+}
+
+declare const orderId: OrderId;
+declare const rawId: number;
+
+getUser(orderId); // Error: 'OrderId' is not assignable to 'UserId'
+getUser(rawId); // Error: 'number' is not assignable to 'UserId'
+```
+
+The brand is a property that **never exists at runtime**. A `UserId` is still a plain
+number in the compiled JavaScript; there is no wrapper object and no cost.
+
+A branded value is still usable as the underlying type:
+
+```ts
+declare const brand: unique symbol;
+type Brand<T, Name extends string> = T & { readonly [brand]: Name };
+type UserId = Brand<number, "UserId">;
+
+declare const id: UserId;
+const next: number = id + 1; // arithmetic works; the result is a plain number
+```
+
+## Creating branded values
+
+The brand must come from somewhere. Put the one unavoidable cast in a small, named
+function, so the rest of the codebase never casts.
+
+```ts
+declare const brand: unique symbol;
+type Brand<T, Name extends string> = T & { readonly [brand]: Name };
+
+type Email = Brand<string, "Email">;
+
+function parseEmail(input: string): Email | null {
+  const trimmed = input.trim().toLowerCase();
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed) ? (trimmed as Email) : null;
+}
+
+function sendWelcome(to: Email): void {
+  console.log(`Welcome email to ${to}`);
+}
+
+const email = parseEmail("Ada@Example.com");
+if (email) sendWelcome(email); // only a validated value gets here
+sendWelcome("ada@example.com"); // Error: 'string' is not assignable to 'Email'
+```
+
+This is the real payoff: **validation becomes visible in the type**. A function that
+takes `Email` documents that validation already happened, and the compiler enforces it.
+
+## Real-world uses
+
+```ts
+declare const brand: unique symbol;
+type Brand<T, Name extends string> = T & { readonly [brand]: Name };
+
+// Money: cents and dollars must never be added by accident
+type Cents = Brand<number, "Cents">;
+type Dollars = Brand<number, "Dollars">;
+
+function toCents(dollars: Dollars): Cents {
+  return Math.round(dollars * 100) as Cents;
+}
+
+declare const price: Dollars;
+declare const fee: Cents;
+
+const total = toCents(price) + fee; // both Cents (arithmetic yields number)
+const wrong: Cents = price; // Error: 'Dollars' is not assignable to 'Cents'
+```
+
+```ts
+declare const brand: unique symbol;
+type Brand<T, Name extends string> = T & { readonly [brand]: Name };
+
+// Distinct identifiers across a domain
+type UserId = Brand<string, "UserId">;
+type ProductId = Brand<string, "ProductId">;
+
+type CartItem = { productId: ProductId; quantity: number };
+
+function addToCart(userId: UserId, item: CartItem): void {
+  console.log(userId, item);
+}
+```
+
+## Limits
+
+- **Arithmetic returns the base type.** `cents + cents` is `number`; re-brand if the
+  result must stay branded.
+- **The brand is a promise, not a proof.** `x as UserId` compiles for any number. Keep
+  casts inside constructors.
+- **JSON loses it.** After `JSON.parse`, you have plain values again; re-validate at the
+  boundary.
+- **Do not brand everything.** Use it where a mix-up is plausible *and* costly.
+
+## Common mistakes
+
+- **Casting everywhere** (`id as UserId` in many files) so the brand guarantees nothing.
+- **Using an object wrapper** (`{ value: number }`) when a brand would add no runtime cost.
+- **Forgetting the brand name must differ.** Two brands with the same name are the same type.
+
+## Practice
+
+1. Brand `Slug` (a lowercase, hyphenated string) and write `toSlug(title: string): Slug`.
+   Make a function `publishPost(slug: Slug)` reject a plain string.
+2. Define `PositiveInt` and a `parsePositiveInt(n: number): PositiveInt | null`.
+3. Why is `type UserId = string & {}` **not** a working brand?

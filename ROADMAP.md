@@ -46,16 +46,16 @@ The features you hit in week one of a real TypeScript codebase.
 
 Type-level programming: transforming types instead of values.
 
-1. **Utility Types: Objects** — `Partial`, `Required`, `Readonly`, `Pick`, `Omit`, `Record`
-2. **Utility Types: Unions & Functions** — `Exclude`, `Extract`, `NonNullable`, `ReturnType`, `Parameters`, `ConstructorParameters`, `InstanceType`
-3. **Conditional Types & infer** — `T extends U ? X : Y`, distributivity, `infer`
-4. **Mapped Types & Key Remapping** — `[K in keyof T]`, modifiers, `as` clauses
-5. **Template Literal Types** — string manipulation at the type level
-6. **Recursive Types** — JSON, `DeepPartial`, nested key paths
-7. **Structural Typing & Compatibility** — shape over name, variance basics
-8. **Branded Types** — making `UserId` and `OrderId` incompatible on purpose
-9. **Result & Error Types** — modelling failure in types instead of throwing
-10. **Declaration Files & Augmentation** — `.d.ts`, `declare`, ambient declarations, declaration merging, module augmentation, typing third-party libraries
+1. **Utility Types: Objects** — `Partial`, `Required`, `Readonly`, `Pick`, `Omit`, `Record` ✅
+2. **Utility Types: Unions & Functions** — `Exclude`, `Extract`, `NonNullable`, `ReturnType`, `Parameters`, `ConstructorParameters`, `InstanceType` ✅
+3. **Conditional Types & infer** — `T extends U ? X : Y`, distributivity, `infer` ✅
+4. **Mapped Types & Key Remapping** — `[K in keyof T]`, modifiers, `as` clauses ✅
+5. **Template Literal Types** — string manipulation at the type level ✅
+6. **Recursive Types** — JSON, `DeepPartial`, nested key paths ✅
+7. **Structural Typing & Compatibility** — shape over name, variance basics ✅
+8. **Branded Types** — making `UserId` and `OrderId` incompatible on purpose ✅
+9. **Result & Error Types** — modelling failure in types instead of throwing ✅
+10. **Declaration Files & Augmentation** — `.d.ts`, `declare`, ambient declarations, declaration merging, module augmentation, typing third-party libraries ✅
 
 ## Level 4a — React + TypeScript · *Phase 5* · 7 topics
 

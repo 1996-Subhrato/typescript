@@ -62,12 +62,33 @@ function asLanguage(value: string): Language | null {
 interface Extracted {
   readonly blocks: Block[];
   readonly skipped: number;
+  /** MDX-level mistakes in the prose (not the code), as "file:line message". */
+  readonly proseIssues: string[];
+}
+
+/**
+ * In MDX, `{...}` outside code is a JavaScript expression and `<Tag>` is JSX. A stray
+ * `${string}` or `Array<string>` in prose therefore crashes at render time even though
+ * every code block compiles. Strip inline code (any backtick-run length) and flag what is
+ * left. The skip marker is the one deliberate exception.
+ */
+function proseIssuesIn(slug: string, line: string, lineNumber: number): string[] {
+  const withoutCode = line.replace(/(`+)[\s\S]*?\1/g, "").replace(SKIP_MARKER, "");
+  const issues: string[] = [];
+  if (/[{}]/.test(withoutCode)) {
+    issues.push(`${slug}.mdx:${lineNumber} unescaped { or } in prose (MDX expression): ${line.trim()}`);
+  }
+  if (/<[A-Za-z/]/.test(withoutCode)) {
+    issues.push(`${slug}.mdx:${lineNumber} unescaped < in prose (MDX JSX): ${line.trim()}`);
+  }
+  return issues;
 }
 
 /** Pulls every ts/tsx fence out of one MDX file. */
 function extractBlocks(slug: string): Extracted {
   const mdx = readFileSync(path.join(CONTENT_DIR, `${slug}.mdx`), "utf8").split(/\r?\n/);
   const blocks: Block[] = [];
+  const proseIssues: string[] = [];
   let skipped = 0;
 
   let fence: string | null = null; // language of the fence we are inside, else null
@@ -94,12 +115,13 @@ function extractBlocks(slug: string): Extracted {
       lastNonEmpty = "";
     } else if (fence !== null) {
       buffer.push(line);
-    } else if (line.trim() !== "") {
-      lastNonEmpty = line;
+    } else {
+      if (line.trim() !== "") lastNonEmpty = line;
+      proseIssues.push(...proseIssuesIn(slug, line, index + 1));
     }
   });
 
-  return { blocks, skipped };
+  return { blocks, skipped, proseIssues };
 }
 
 const requested = process.argv.slice(2);
@@ -110,11 +132,13 @@ mkdirSync(WORK_DIR, { recursive: true });
 
 const compiled = new Map<string, Block>();
 let skippedTotal = 0;
+const proseIssues: string[] = [];
 
 try {
   for (const slug of slugs) {
-    const { blocks, skipped } = extractBlocks(slug);
+    const { blocks, skipped, proseIssues: issues } = extractBlocks(slug);
     skippedTotal += skipped;
+    proseIssues.push(...issues);
     blocks.forEach((block, index) => {
       const fileName = `${slug}__${String(index + 1).padStart(2, "0")}.${block.language}`;
       // `export {}` goes at the END so block line N is file line N.
@@ -180,6 +204,11 @@ try {
         console.log(`STALE CLAIM  ${where}\n    ${text.trim()}`);
       }
     });
+  }
+
+  for (const issue of proseIssues) {
+    problems += 1;
+    console.log(`MDX PROSE    ${issue}`);
   }
 
   // Errors that did not land on any block line (bad import, trailing `export {}`, ...).

@@ -1,0 +1,152 @@
+# Declaration Files & Augmentation
+
+## What
+
+A **declaration file** (`.d.ts`) contains only types — no runnable code. It tells the
+compiler what shape some JavaScript has. They are how typed code uses untyped code,
+and how library authors ship their types.
+
+```ts
+// math.js has no types. This describes it.
+declare function clamp(value: number, min: number, max: number): number;
+```
+
+## `declare`: describing something that exists elsewhere
+
+`declare` states "this exists at runtime; trust me about its type" without emitting any
+code.
+
+```ts
+declare const APP_VERSION: string; // injected by the bundler at build time
+declare function legacyTrack(event: string, payload?: object): void;
+
+declare class Analytics {
+  constructor(key: string);
+  track(event: string): void;
+}
+
+console.log(APP_VERSION.toUpperCase());
+legacyTrack("signup");
+```
+
+Such declarations are **ambient**: they describe the environment rather than create it.
+Everything in a `.d.ts` file is ambient.
+
+## Missing types for a library
+
+Importing a package that ships no types gives:
+
+```ts
+import { price } from "legacy-pricing"; // Error: Cannot find module 'legacy-pricing' or its type declarations
+```
+
+Fixes, in order of preference:
+
+1. **Install types from DefinitelyTyped:** `npm i -D @types/<package>`. TypeScript finds
+   them automatically.
+2. **Write a minimal declaration** for just the parts you use.
+3. **Use a wildcard shorthand** as a last resort, which types the module as `any`.
+
+The minimal declaration lives in a `.d.ts` file that the project includes. The file must
+be a *script* — no top-level `import` or `export` — which is also why the checker used on
+this site cannot compile it.
+
+{/* check:skip */}
+```ts title="src/types/legacy-pricing.d.ts"
+declare module "legacy-pricing" {
+  export function price(sku: string, quantity: number): number;
+  export const currency: "USD" | "EUR";
+}
+```
+
+{/* check:skip */}
+```ts title="src/types/assets.d.ts"
+// Let `import logo from "./logo.svg"` type-check as a URL string
+declare module "*.svg" {
+  const url: string;
+  export default url;
+}
+```
+
+## Declaration merging
+
+Declarations with the same name combine into one. You met interface merging earlier.
+
+```ts
+interface Product {
+  id: number;
+}
+
+interface Product {
+  name: string;
+}
+
+const product: Product = { id: 1, name: "Keyboard" }; // must satisfy both
+```
+
+Merging is what makes **augmentation** possible: reopening a type you do not own.
+
+## Module augmentation
+
+To add to a type from a library, redeclare the module in a file that is itself a module
+(it has an `import` or `export`).
+
+```ts
+import "express-serve-static-core";
+
+declare module "express-serve-static-core" {
+  interface Request {
+    user?: { id: number; role: "admin" | "member" };
+  }
+}
+
+// Now `req.user` is typed everywhere Express's Request is used.
+```
+
+This is the standard way to type data attached by middleware, such as
+`req.user` after authentication — see *Middleware & Error Handling*.
+
+## Global augmentation
+
+Add to global types (such as `Window`) from inside a module with `declare global`:
+
+```ts
+declare global {
+  interface Window {
+    analytics: { track(event: string): void };
+  }
+}
+
+window.analytics.track("page_view");
+
+export {};
+```
+
+## Where declaration files fit in a project
+
+| Concern | Detail |
+| ------- | ------ |
+| Which `.d.ts` files are picked up | Those matched by `include` in `tsconfig.json` |
+| Libraries you author | Set `"declaration": true` to emit `.d.ts` files next to your output |
+| Skipping checks in dependencies | `"skipLibCheck": true` skips checking `.d.ts` files, which speeds builds |
+| `@types/*` packages | Installed under `node_modules/@types` and found automatically |
+
+## Common mistakes
+
+- **Putting `import` at the top of an ambient declaration file.** It turns the file into a
+  module, and `declare module "x"` becomes an augmentation that fails to resolve.
+- **Declaring the wrong thing.** The compiler trusts a `declare`. If the runtime differs,
+  the type is a lie.
+- **Reaching for `any`-typed shorthand** (`declare module "x";`) and leaving it.
+- **Augmenting without the module's real name.** The string must match the module the
+  *type* is declared in, which is sometimes an internal package (as with
+  `express-serve-static-core`).
+- **Forgetting `export {}`** in a file that only contains `declare global`.
+
+## Practice
+
+1. Write a declaration for an imaginary untyped package `tiny-cache` exposing
+   `get(key: string): unknown` and `set(key: string, value: unknown, ttl?: number): void`.
+2. Augment `Window` with a typed `__APP_CONFIG__` object and read it safely.
+3. Why does `declare module "legacy-pricing"` fail inside a file that also has
+   `export const x = 1`?

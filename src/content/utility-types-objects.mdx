@@ -1,0 +1,174 @@
+# Utility Types: Objects
+
+## What
+
+**Utility types** are generic types TypeScript ships with that build a new type from an
+existing one. Instead of writing `UserUpdate`, `PublicUser` and `UserSummary` by hand and
+keeping them in sync with `User`, you derive them.
+
+```ts
+type User = {
+  id: number;
+  name: string;
+  email: string;
+  passwordHash: string;
+};
+```
+
+Every example below starts from this `User`.
+
+## `Partial<T>`: everything optional
+
+```ts
+type User = { id: number; name: string; email: string; passwordHash: string };
+
+type UserUpdate = Partial<User>;
+// { id?: number; name?: string; email?: string; passwordHash?: string }
+
+const patch: UserUpdate = { name: "Ada" }; // only the fields being changed
+const wrong: UserUpdate = { name: 42 }; // Error: 'number' is not assignable to 'string'
+```
+
+The classic use is a `PATCH` payload. Properties are optional, but their types are
+still checked.
+
+`Partial` is **shallow**: it only affects the top level. Nested objects stay as they
+were. *Recursive Types* builds a `DeepPartial`.
+
+## `Required<T>`: nothing optional
+
+The opposite. It strips every `?`.
+
+```ts
+type Settings = { theme?: string; pageSize?: number };
+
+function withDefaults(input: Settings): Required<Settings> {
+  return { theme: input.theme ?? "light", pageSize: input.pageSize ?? 20 };
+}
+```
+
+The return type promises that after applying defaults, nothing is missing.
+
+## `Readonly<T>`: nothing writable
+
+```ts
+type Config = { apiUrl: string; retries: number };
+
+const config: Readonly<Config> = { apiUrl: "https://api.example.com", retries: 3 };
+config.retries = 5; // Error: Cannot assign to 'retries' because it is a read-only property
+```
+
+Also shallow, and compile-time only. `Object.freeze` returns a `Readonly<T>`.
+
+## `Pick<T, K>`: keep only these keys
+
+An **allow-list**. The result contains exactly what you name.
+
+```ts
+type User = { id: number; name: string; email: string; passwordHash: string };
+
+type UserSummary = Pick<User, "id" | "name">;
+// { id: number; name: string }
+
+function toSummary(user: User): UserSummary {
+  return { id: user.id, name: user.name };
+}
+
+type Broken = Pick<User, "id" | "username">; // Error: '"username"' does not satisfy 'keyof User'
+```
+
+`Pick` checks that every key really exists on `T`.
+
+## `Omit<T, K>`: remove these keys
+
+A **block-list**. The result is everything except what you name.
+
+```ts
+type User = { id: number; name: string; email: string; passwordHash: string };
+
+type PublicUser = Omit<User, "passwordHash">;
+// { id: number; name: string; email: string }
+
+type NewUser = Omit<User, "id">; // the shape of a record before the database assigns an id
+```
+
+### `Omit` does not check its keys
+
+Unlike `Pick`, `Omit` accepts **any** string. A typo is silently ignored.
+
+```ts
+type User = { id: number; name: string; email: string; passwordHash: string };
+
+type PublicUser = Omit<User, "pasword">; // typo — compiles, omits nothing
+
+const user: PublicUser = { id: 1, name: "Ada", email: "ada@example.com" }; // Error: 'passwordHash' is missing
+```
+
+The error on the last line is the clue: `passwordHash` is still required. This matters when the
+point of the type is *not leaking a field*. Prefer `Pick` when the safe set is small, and
+`Omit` when the exclusion list is short and you are confident of the spelling.
+
+## `Record<K, V>`: an object with these keys
+
+`Record<K, V>` builds an object type whose keys are `K` and whose values are all `V`.
+
+### Keys as a union: every key required
+
+```ts
+type OrderStatus = "pending" | "paid" | "shipped";
+
+const statusLabel: Record<OrderStatus, string> = {
+  pending: "Awaiting payment",
+  paid: "Paid",
+  shipped: "On its way",
+};
+
+const incomplete: Record<OrderStatus, string> = { // Error: Property 'shipped' is missing
+  pending: "Awaiting payment",
+  paid: "Paid",
+};
+```
+
+This is the best way to build a lookup table. Add a status and the compiler lists every
+`Record` that now needs an entry.
+
+### Keys as `string`: a dictionary
+
+```ts
+const stockBySku: Record<string, number> = { "kb-01": 12, "ms-02": 40 };
+
+const count = stockBySku["unknown"]; // number | undefined (noUncheckedIndexedAccess)
+```
+
+## Combining them
+
+Utility types compose, because each returns an ordinary type.
+
+```ts
+type User = { id: number; name: string; email: string; passwordHash: string };
+
+// A PATCH body: any editable field, but never the id or the hash
+type UserPatch = Partial<Omit<User, "id" | "passwordHash">>;
+
+function applyPatch(user: User, patch: UserPatch): User {
+  return { ...user, ...patch };
+}
+```
+
+## Common mistakes
+
+- **Expecting deep behaviour.** `Partial`, `Required` and `Readonly` only touch the
+  first level.
+- **Trusting `Omit` with a typo.** See above; check the result.
+- **Rewriting a type by hand** that could be derived. Two copies will drift.
+- **`Record<string, T>` where the keys are really known.** Use a union as the key type so
+  the compiler knows which keys exist.
+
+## Practice
+
+1. From `User`, derive `LoginRequest` containing only `email` and the password (add a
+   `password: string` field of your own).
+2. Make a `Record` keyed by `"admin" | "editor" | "viewer"` whose values are arrays of
+   permission strings. Delete one key and read the error.
+3. Write `updateUser(id: number, patch: UserPatch): User | undefined` against an
+   in-memory `Record<number, User>`.

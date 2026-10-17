@@ -1,0 +1,175 @@
+# Utility Types: Unions & Functions
+
+## What
+
+The second family of built-in utilities. These operate on **unions** (adding or removing
+members) and on **functions and classes** (extracting their parameter and return types).
+
+## Working with unions
+
+### `Exclude<T, U>`: remove members
+
+```ts
+type OrderStatus = "pending" | "paid" | "shipped" | "cancelled";
+
+type ActiveStatus = Exclude<OrderStatus, "cancelled">;
+// "pending" | "paid" | "shipped"
+```
+
+### `Extract<T, U>`: keep members
+
+```ts
+type OrderStatus = "pending" | "paid" | "shipped" | "cancelled";
+
+type TerminalStatus = Extract<OrderStatus, "shipped" | "cancelled">;
+// "shipped" | "cancelled"
+```
+
+`Exclude` and `Extract` are exact opposites. Both also work on object unions, where
+"matches" means *is assignable to*:
+
+```ts
+type AppEvent =
+  | { type: "click"; x: number; y: number }
+  | { type: "keypress"; key: string }
+  | { type: "scroll"; offset: number };
+
+type ClickEvent = Extract<AppEvent, { type: "click" }>;
+// { type: "click"; x: number; y: number }
+
+type NonClickEvent = Exclude<AppEvent, { type: "click" }>;
+// keypress | scroll
+
+function describe(event: ClickEvent): string {
+  return `${event.x},${event.y}`;
+}
+```
+
+This is how you pull one member out of a discriminated union without redefining it.
+
+### `NonNullable<T>`: remove `null` and `undefined`
+
+```ts
+type MaybeName = string | null | undefined;
+
+type Name = NonNullable<MaybeName>; // string
+
+function firstDefined(values: (string | null | undefined)[]): NonNullable<MaybeName>[] {
+  return values.filter((value): value is string => value != null);
+}
+```
+
+## Working with functions
+
+Real codebases already contain functions. Instead of copying their types, **ask the
+function**.
+
+### `ReturnType<F>` and `Parameters<F>`
+
+```ts
+function createOrder(customerId: number, items: string[], express = false) {
+  return { id: "ord_1", customerId, items, express, total: 0 };
+}
+
+type Order = ReturnType<typeof createOrder>;
+// { id: string; customerId: number; items: string[]; express: boolean; total: number }
+
+type CreateOrderArgs = Parameters<typeof createOrder>;
+// [customerId: number, items: string[], express?: boolean]
+
+type FirstArg = Parameters<typeof createOrder>[0]; // number
+```
+
+Both need `typeof`, because the argument must be a **type** and a function name is a
+**value**:
+
+```ts
+function createOrder(customerId: number) {
+  return { customerId };
+}
+
+type Wrong = ReturnType<createOrder>; // Error: 'createOrder' refers to a value, but is being used as a type
+```
+
+### `Awaited<T>`: unwrap a Promise
+
+`async` functions return `Promise<...>`. Usually you want what is *inside*.
+
+```ts
+type User = { id: number; name: string };
+
+async function fetchUser(id: number): Promise<User> {
+  return { id, name: "Ada" };
+}
+
+type FetchResult = ReturnType<typeof fetchUser>; // Promise<User>
+type LoadedUser = Awaited<ReturnType<typeof fetchUser>>; // User
+```
+
+### `ConstructorParameters<C>` and `InstanceType<C>`
+
+The same idea for classes.
+
+```ts
+class EmailClient {
+  constructor(
+    public readonly host: string,
+    public readonly port: number,
+  ) {}
+
+  send(to: string): void {
+    console.log(`Sending to ${to} via ${this.host}:${this.port}`);
+  }
+}
+
+type EmailClientArgs = ConstructorParameters<typeof EmailClient>; // [host: string, port: number]
+type EmailClientInstance = InstanceType<typeof EmailClient>; // EmailClient
+
+function createClient(...args: EmailClientArgs): EmailClientInstance {
+  return new EmailClient(...args);
+}
+```
+
+## Real-world example: wrapping a function
+
+A common reason to need `Parameters` and `ReturnType` is wrapping a function without
+losing its types.
+
+```ts
+function withLogging<F extends (...args: never[]) => unknown>(fn: F) {
+  return (...args: Parameters<F>): ReturnType<F> => {
+    console.log("calling", fn.name, args);
+    return fn(...args) as ReturnType<F>;
+  };
+}
+
+function addTax(price: number, rate: number): number {
+  return price * (1 + rate);
+}
+
+const loggedAddTax = withLogging(addTax);
+const total = loggedAddTax(100, 0.2); // number
+loggedAddTax(100); // Error: Expected 2 arguments, but got 1
+```
+
+The wrapper has exactly the original signature, with no hand-copied types. If `addTax`
+gains a parameter, the wrapper follows automatically.
+
+## Common mistakes
+
+- **`ReturnType<myFunction>`** without `typeof`.
+- **Forgetting `Awaited`** and ending up with `Promise<User>` where `User` was meant.
+- **Using these to avoid naming a type.** If a type is used in many places, a named
+  `type User = ...` is clearer than `Awaited<ReturnType<typeof fetchUser>>` repeated.
+- **Deriving types from a function whose return type is wide.** `ReturnType` faithfully
+  reports what the compiler inferred, including accidental unions.
+
+## Practice
+
+1. Given `type Shape = { kind: "circle"; radius: number } | { kind: "square"; size: number }`,
+   derive `Circle` with `Extract`.
+2. Derive `SafeStatus = Exclude<OrderStatus, "cancelled">` and write a function that
+   accepts only it.
+3. Write `type Handler<F> = ...` so `Handler<typeof createOrder>` is a function that takes
+   the same arguments but returns `Promise<Order>`. (You will need `Parameters` and
+   `ReturnType`.)

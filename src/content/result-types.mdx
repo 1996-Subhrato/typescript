@@ -1,0 +1,175 @@
+# Result & Error Types
+
+## What
+
+Instead of *throwing* when something can fail, return a value that is **either a success
+or a failure**. The type system then forces every caller to handle both.
+
+```ts
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+```
+
+This is a discriminated union, with `ok` as the discriminant.
+
+## The problem with exceptions
+
+A function's signature says nothing about whether it throws.
+
+```ts
+function parseAge(input: string): number {
+  const age = Number(input);
+  if (Number.isNaN(age)) throw new Error("Not a number");
+  return age;
+}
+```
+
+Nothing in `(input: string) => number` warns the caller. Forgetting a `try/catch`
+compiles fine, and the failure arrives at runtime.
+
+## A Result type
+
+```ts
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+type ParseError =
+  | { kind: "empty" }
+  | { kind: "not-a-number"; input: string }
+  | { kind: "out-of-range"; min: number; max: number };
+
+function parseAge(input: string): Result<number, ParseError> {
+  if (input.trim() === "") return { ok: false, error: { kind: "empty" } };
+
+  const age = Number(input);
+  if (Number.isNaN(age)) return { ok: false, error: { kind: "not-a-number", input } };
+  if (age < 0 || age > 130) return { ok: false, error: { kind: "out-of-range", min: 0, max: 130 } };
+
+  return { ok: true, value: age };
+}
+```
+
+The caller **must** check `ok` before touching `value`:
+
+```ts
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+declare function parseAge(input: string): Result<number, { kind: string }>;
+
+const result = parseAge("42");
+console.log(result.value); // Error: Property 'value' does not exist on the failure member
+
+if (result.ok) {
+  console.log(result.value + 1); // number
+} else {
+  console.log(result.error.kind); // the error, typed
+}
+```
+
+## Typed errors
+
+A union of error shapes lets the caller handle each case, with exhaustiveness checking.
+
+```ts
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+type ParseError =
+  | { kind: "empty" }
+  | { kind: "not-a-number"; input: string }
+  | { kind: "out-of-range"; min: number; max: number };
+
+declare function parseAge(input: string): Result<number, ParseError>;
+
+function describe(input: string): string {
+  const result = parseAge(input);
+  if (result.ok) return `Age ${result.value}`;
+
+  switch (result.error.kind) {
+    case "empty":
+      return "Please enter an age";
+    case "not-a-number":
+      return `"${result.error.input}" is not a number`;
+    case "out-of-range":
+      return `Age must be between ${result.error.min} and ${result.error.max}`;
+  }
+}
+```
+
+Add a fourth error kind and the `switch` stops compiling until you handle it.
+
+## Helpers
+
+```ts
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+const ok = <T>(value: T): Result<T, never> => ({ ok: true, value });
+const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
+
+function map<T, U, E>(result: Result<T, E>, fn: (value: T) => U): Result<U, E> {
+  return result.ok ? ok(fn(result.value)) : result;
+}
+
+const doubled = map(ok(21), (n) => n * 2); // Result<number, never>
+const failed = map(err("bad input"), (n: number) => n * 2); // Result<number, string>
+```
+
+`never` for the unused side means "this can't happen", so `ok(21)` is assignable to a
+`Result<number, SomeError>`.
+
+## Real-world example: an API client
+
+```ts
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+type ApiError =
+  | { kind: "network"; message: string }
+  | { kind: "http"; status: number }
+  | { kind: "invalid-body" };
+
+type User = { id: number; name: string };
+
+async function fetchUser(id: number): Promise<Result<User, ApiError>> {
+  let response: Response;
+  try {
+    response = await fetch(`/api/users/${id}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { ok: false, error: { kind: "network", message } };
+  }
+
+  if (!response.ok) return { ok: false, error: { kind: "http", status: response.status } };
+
+  const body: unknown = await response.json();
+  if (typeof body !== "object" || body === null || !("id" in body) || !("name" in body)) {
+    return { ok: false, error: { kind: "invalid-body" } };
+  }
+
+  return { ok: true, value: body as User };
+}
+```
+
+(The last line still asserts; real validation is the subject of *DTOs & Runtime
+Validation* and *unknown at the Boundary*.)
+
+## Result or throw?
+
+| Situation | Use |
+| --------- | --- |
+| Failure is **expected** and the caller can react (validation, not found, network) | `Result` |
+| Failure is a **bug** or unrecoverable (violated invariant, bad config at boot) | `throw` |
+| Library boundary where callers expect exceptions | `throw`, convert at the edge |
+
+## Common mistakes
+
+- **Using `Result` for everything.** Wrapping genuinely exceptional errors makes simple code
+  noisy.
+- **Using `string` as the error type.** A union of shapes is what lets callers branch.
+- **Forgetting to check `ok`.** The compiler stops you, which is the point.
+- **Mixing styles** within one layer: some functions throw, some return `Result`. Decide
+  per layer.
+
+## Practice
+
+1. Write `parseJson(text: string): Result<unknown, { message: string }>` wrapping
+   `JSON.parse`.
+2. Write `andThen` that chains two `Result`-returning functions, stopping at the first
+   failure.
+3. Add a `"too-young"` error to `ParseError` and watch `describe` fail to compile.

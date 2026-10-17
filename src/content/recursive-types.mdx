@@ -1,0 +1,161 @@
+# Recursive Types
+
+## What
+
+A recursive type refers to itself in its own definition. They describe data that is
+nested to an unknown depth: trees, JSON, comment threads, menus, configuration.
+
+You already saw one in this site's own code: `TocNode` has `children: readonly TocNode[]`.
+
+## Recursive data
+
+### Trees
+
+```ts
+type Category = {
+  id: number;
+  name: string;
+  children: Category[];
+};
+
+const catalog: Category = {
+  id: 1,
+  name: "Electronics",
+  children: [
+    { id: 2, name: "Keyboards", children: [] },
+    { id: 3, name: "Audio", children: [{ id: 4, name: "Headphones", children: [] }] },
+  ],
+};
+
+function countNodes(category: Category): number {
+  return 1 + category.children.reduce((sum, child) => sum + countNodes(child), 0);
+}
+```
+
+A recursive type is naturally processed by a recursive function.
+
+### JSON
+
+```ts
+type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
+
+const payload: Json = {
+  user: { id: 1, tags: ["admin", "beta"], profile: null },
+};
+
+const bad: Json = { callback: () => 1 }; // Error: a function is not assignable to 'Json'
+```
+
+`JSON.parse` returns `any`. Typing the result as `Json` (or `unknown`) is far safer.
+
+## Recursive utility types
+
+### `DeepPartial` and `DeepReadonly`
+
+`Partial<T>` only touches the top level. Making the recursion explicit goes all the way
+down.
+
+```ts
+type DeepPartial<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends object
+    ? { [K in keyof T]?: DeepPartial<T[K]> }
+    : T;
+
+type AppConfig = {
+  server: { host: string; port: number };
+  cache: { ttlSeconds: number; enabled: boolean };
+};
+
+const override: DeepPartial<AppConfig> = { server: { port: 8080 } }; // host not required
+const wrong: DeepPartial<AppConfig> = { server: { port: "8080" } }; // Error: 'string' is not assignable to 'number'
+```
+
+```ts
+type DeepReadonly<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends object
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : T;
+
+type Settings = { theme: { dark: boolean } };
+
+const settings: DeepReadonly<Settings> = { theme: { dark: true } };
+settings.theme.dark = false; // Error: Cannot assign to 'dark' because it is a read-only property
+```
+
+The function check stops the recursion at functions, which would otherwise be mapped
+into an object of their properties.
+
+## Key paths
+
+A well-known use is a type for every valid dot-path into an object, as used by form
+libraries, i18n and `lodash.get`.
+
+```ts
+type Paths<T> = T extends object
+  ? {
+      [K in keyof T & string]: T[K] extends object ? K | `${K}.${Paths<T[K]>}` : K;
+    }[keyof T & string]
+  : never;
+
+type AppConfig = {
+  server: { host: string; port: number };
+  cache: { ttlSeconds: number };
+};
+
+type ConfigPath = Paths<AppConfig>;
+// "server" | "server.host" | "server.port" | "cache" | "cache.ttlSeconds"
+```
+
+And a lookup that returns the right value type for each path:
+
+```ts
+type PathValue<T, P extends string> = P extends `${infer Head}.${infer Tail}`
+  ? Head extends keyof T
+    ? PathValue<T[Head], Tail>
+    : never
+  : P extends keyof T
+    ? T[P]
+    : never;
+
+type AppConfig = {
+  server: { host: string; port: number };
+  cache: { ttlSeconds: number };
+};
+
+declare function getConfig<P extends string>(path: P): PathValue<AppConfig, P>;
+
+const port = getConfig("server.port"); // number
+const host = getConfig("server.host"); // string
+```
+
+Read `PathValue` as a loop: peel off `Head`, look it up, recurse into what is left.
+
+## Limits
+
+The compiler stops recursing at a fixed depth (roughly 100 levels for ordinary recursion;
+tail-recursive conditional types are allowed 1,000) and reports *"Type instantiation is
+excessively deep and possibly infinite."*
+
+- Real data is shallow, so this almost never matters for domain types.
+- If you hit it, the type is probably too clever. Constrain the depth, or simplify.
+
+## Common mistakes
+
+- **Forgetting the base case.** A recursive conditional type with no terminating branch
+  loops until the compiler gives up.
+- **Recursing into things that should be leaves**: functions, `Date`, `Map`. Check for them
+  before mapping.
+- **Recursion where a loop in the data would do.** A flat structure with `parentId` is often
+  easier to store and type than a nested one.
+- **Using `interface` or `type` inconsistently.** Both can be recursive; with a type alias the
+  self-reference must sit behind a property or tuple/array.
+
+## Practice
+
+1. Type a nested comment thread: `Comment` with `author`, `text` and `replies`. Write
+   `countComments(comment): number`.
+2. Write `DeepRequired<T>` using `-?`.
+3. Using `Paths<AppConfig>`, write `get(config, path)` and confirm that
+   `get(config, "server.prt")` fails.

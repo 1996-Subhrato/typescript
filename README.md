@@ -36,15 +36,15 @@ full list is in [`ROADMAP.md`](./ROADMAP.md).
 | ----- | :----: | ------ |
 | TypeScript Fundamentals | 11 | ✅ Complete |
 | Practical TypeScript | 9 | ✅ Complete |
-| Advanced Types | 10 | ⏳ Next |
-| React + TypeScript | 7 | Planned |
+| Advanced Types | 10 | ✅ Complete |
+| React + TypeScript | 7 | ⏳ Next |
 | Node.js + Express | 6 | Planned |
 | Next.js + TypeScript | 5 | Planned |
 | Real-World API Typing | 6 | Planned |
 | TypeScript Configuration | 3 | Planned |
 | Professional TypeScript | 7 | Planned |
 
-**20 of 64 topics published.** Unwritten topics appear greyed out in the sidebar so the
+**30 of 64 topics published.** Unwritten topics appear greyed out in the sidebar so the
 whole path is visible up front.
 
 ## Features
@@ -110,14 +110,17 @@ npm run build
 
 ### Content quality gate
 
-`npm run check:content` extracts every `ts` fence from `src/content/*.mdx`, compiles each
-as an isolated module under the project's strict flags, and enforces two rules:
+`npm run check:content` extracts every `ts` and `tsx` fence from `src/content/*.mdx`,
+compiles each as an isolated module under the project's strict flags, lints the prose for
+MDX hazards (a stray `{` or `<Tag` outside code crashes rendering), and enforces two rules:
 
 - A line that is **meant to fail** carries a trailing `// Error: ...` comment.
 - Every real compiler error must be claimed, and every claim must be a real error.
 
 So the documentation cannot show an error that does not happen, or hide one that does.
-To check selected topics only: `npm run check:content -- narrowing`.
+To check selected topics only: `npm run check:content -- narrowing`. A snippet that genuinely
+cannot compile standalone can be preceded by a `{/* check:skip */}` line; skips are counted and
+printed. With a dev server running, `npm run check:pages` smoke-tests every rendered page.
 
 ## Project structure
 

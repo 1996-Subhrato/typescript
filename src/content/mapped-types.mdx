@@ -1,0 +1,154 @@
+# Mapped Types & Key Remapping
+
+## What
+
+A mapped type builds a new object type by looping over a set of keys. It is `for...in`
+for types, and it is how `Partial`, `Readonly`, `Pick` and `Record` are made.
+
+```ts
+type Flags<T> = { [K in keyof T]: boolean };
+
+type User = { id: number; name: string; email: string };
+
+type UserFlags = Flags<User>;
+// { id: boolean; name: boolean; email: boolean }
+```
+
+Read `[K in keyof T]` as: *for each key `K` of `T`*. The right-hand side can use `K`
+and `T[K]` (the original property's type).
+
+## The utilities, rebuilt
+
+```ts
+type MyPartial<T> = { [K in keyof T]?: T[K] };
+type MyRequired<T> = { [K in keyof T]-?: T[K] };
+type MyReadonly<T> = { readonly [K in keyof T]: T[K] };
+type MyPick<T, Keys extends keyof T> = { [K in Keys]: T[K] };
+type MyRecord<Keys extends string | number | symbol, V> = { [K in Keys]: V };
+
+type Product = { id: number; name: string; price?: number };
+
+const draft: MyPartial<Product> = { name: "Keyboard" };
+const complete: MyRequired<Product> = { id: 1, name: "Keyboard" }; // Error: Property 'price' is missing
+```
+
+Nothing magic: each built-in is a single mapped type. Knowing that makes it easy to write
+your own variants.
+
+## Modifiers: add or remove `readonly` and `?`
+
+Prefix with `+` (the default) to add, or `-` to remove.
+
+```ts
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+type Concrete<T> = { [K in keyof T]-?: T[K] };
+
+type Frozen = { readonly id: number; readonly name: string };
+
+const editable: Mutable<Frozen> = { id: 1, name: "Ada" };
+editable.name = "Grace"; // allowed now
+```
+
+### Homomorphic mapped types preserve modifiers
+
+When the loop is over `keyof T` of an existing type, the result inherits `readonly` and
+`?` from the original unless you change them. That is why `{ [K in keyof T]: string }`
+keeps optional keys optional.
+
+## Looping over a union of literals
+
+The key set does not have to come from `keyof`. Any union of string literals works.
+
+```ts
+type OrderStatus = "pending" | "paid" | "shipped";
+
+type StatusCounts = { [S in OrderStatus]: number };
+// { pending: number; paid: number; shipped: number }
+
+const counts: StatusCounts = { pending: 3, paid: 10, shipped: 7 };
+```
+
+## Changing the value type
+
+```ts
+type Nullable<T> = { [K in keyof T]: T[K] | null };
+type Loadable<T> = { [K in keyof T]: { loading: boolean; value: T[K] | undefined } };
+
+type Profile = { name: string; age: number };
+
+const fromApi: Nullable<Profile> = { name: "Ada", age: null };
+```
+
+### Real-world: form state
+
+One definition of the data gives you its error and touched maps for free.
+
+```ts
+type SignupForm = {
+  email: string;
+  password: string;
+  age: number;
+};
+
+type FormErrors<T> = { [K in keyof T]?: string };
+type FormTouched<T> = { [K in keyof T]: boolean };
+
+const errors: FormErrors<SignupForm> = { email: "Invalid email" };
+const touched: FormTouched<SignupForm> = { email: true, password: false, age: false };
+const typo: FormErrors<SignupForm> = { emial: "Invalid email" }; // Error: 'emial' does not exist in type 'FormErrors<SignupForm>'
+```
+
+Add a field to `SignupForm` and every derived type updates.
+
+## Key remapping with `as`
+
+Add an `as` clause to change or **filter** keys while looping. Mapping a key to `never`
+drops it.
+
+```ts
+type Product = {
+  id: number;
+  name: string;
+  price: number;
+  inStock: boolean;
+};
+
+// Keep only the properties whose value is a number
+type NumericProps<T> = {
+  [K in keyof T as T[K] extends number ? K : never]: T[K];
+};
+
+type Numeric = NumericProps<Product>;
+// { id: number; price: number }
+```
+
+```ts
+// Remove one key — a safer Omit, because the key must really exist
+type Without<T, Key extends keyof T> = {
+  [K in keyof T as K extends Key ? never : K]: T[K];
+};
+
+type User = { id: number; name: string; passwordHash: string };
+
+type SafeUser = Without<User, "passwordHash">;
+type Typo = Without<User, "pasword">; // Error: '"pasword"' does not satisfy 'keyof User'
+```
+
+Renaming keys uses the same `as` clause together with template literal types — see the
+next topic for `get`/`set` generators.
+
+## Common mistakes
+
+- **Mapping over the wrong thing.** `[K in T]` is for a union of keys; `[K in keyof T]`
+  loops over an object type's keys.
+- **Losing optionality** by writing `[K in Exclude<keyof T, "x">]` — a non-homomorphic loop
+  does not preserve modifiers. Use `as` remapping or `Pick` / `Omit` instead.
+- **Mapped types on arrays and tuples** behave specially: the loop maps the *elements*.
+- **Building a clever type no one can read.** Prefer the built-in utility when one fits.
+
+## Practice
+
+1. Write `Getters<T>` returning `{ [K in keyof T]: () => T[K] }` and use it on `Product`.
+2. Write `OptionalExcept<T, Keys extends keyof T>` — everything optional except the keys
+   named. (Combine a mapped type, `Pick` and `Partial` with `Omit`.)
+3. Write `StringKeys<T>` that keeps only the properties whose value is a `string`.
