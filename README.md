@@ -118,6 +118,11 @@ MDX hazards (a stray `{` or `<Tag` outside code crashes rendering), and enforces
 - Every real compiler error must be claimed, and every claim must be a real error.
 
 So the documentation cannot show an error that does not happen, or hide one that does.
+A code block can start with `// @option: value` lines to set compiler options for that block
+only (for example `// @strictNullChecks: false`), which is how the configuration topics show a
+flag both on and off. Lists are comma-separated, `// @types:` clears a list, and `default`
+removes a base option; an unknown option or bad value fails the check.
+
 To check selected topics only: `npm run check:content -- narrowing`. A snippet that genuinely
 cannot compile standalone can be preceded by a `{/* check:skip */}` line; skips are counted and
 printed. With a dev server running, `npm run check:pages` smoke-tests every rendered page.

@@ -9,6 +9,14 @@
  * Each block is compiled as its own module, so snippets must be self-contained.
  * Flags mirror the project's tsconfig (strict + noUncheckedIndexedAccess + ...).
  *
+ * Per-block compiler options: leading `// @option: value` lines override the base options for
+ * THAT block only, the same convention TypeScript's own test suite uses. Lists are comma
+ * separated (`// @lib: es2015,dom`), an empty list is written `// @types:`, and the value `default`
+ * removes the base option entirely.
+ * Names and values are validated by TypeScript's own option parser, so a typo fails loudly
+ * (BAD DIRECTIVE). Blocks sharing an option set are compiled together in one tsc run. The
+ * directive lines stay in the block, so line numbers still map 1:1.
+ *
  * Skipping: a block that genuinely cannot compile standalone (it depends on types
  * Next.js generates from the real route tree, such as `PageProps<"/blog/[slug]">`)
  * may be preceded by a line containing exactly `{/* check:skip *\/}`. Skips are
@@ -24,6 +32,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 
 type Language = "ts" | "tsx";
 
@@ -139,6 +148,70 @@ function extractBlocks(slug: string): Extracted {
   return { blocks, skipped, proseIssues };
 }
 
+const BASE_OPTIONS: Record<string, unknown> = {
+  target: "ES2022",
+  module: "esnext",
+  moduleResolution: "bundler",
+  lib: ["ES2023", "DOM", "DOM.Iterable"],
+  types: ["node"],
+  jsx: "react-jsx",
+  esModuleInterop: true,
+  strict: true,
+  noUncheckedIndexedAccess: true,
+  noImplicitOverride: true,
+  noFallthroughCasesInSwitch: true,
+  verbatimModuleSyntax: true,
+  noEmit: true,
+  skipLibCheck: true,
+};
+
+/** Options whose value is a list, so a single value must be wrapped in an array. */
+const LIST_OPTIONS = new Set(["lib", "types"]);
+
+const DIRECTIVE = /^\/\/\s*@([A-Za-z]+)\s*:\s*(.*?)\s*$/;
+
+function coerceValue(name: string, raw: string): unknown {
+  if (LIST_OPTIONS.has(name)) return raw === "" ? [] : raw.split(",").map((part) => part.trim());
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  if (/^-?\d+$/.test(raw)) return Number(raw);
+  return raw;
+}
+
+interface Directives {
+  readonly overrides: Record<string, unknown>;
+  readonly problems: string[];
+}
+
+/** Reads the leading `// @option: value` lines of a block. */
+function parseDirectives(block: Block): Directives {
+  const overrides: Record<string, unknown> = {};
+  const problems: string[] = [];
+
+  for (const [index, line] of block.lines.entries()) {
+    const match = DIRECTIVE.exec(line.trim());
+    if (!match) break; // directives must lead the block; `// @ts-expect-error` has no colon, so it ends them
+    const [, name, raw] = match;
+    if (name === undefined || raw === undefined) break;
+    overrides[name] = raw === "default" ? "default" : coerceValue(name, raw);
+
+    const { errors } = ts.convertCompilerOptionsFromJson({ [name]: overrides[name] === "default" ? undefined : overrides[name] }, ROOT);
+    for (const error of errors) {
+      const text = ts.flattenDiagnosticMessageText(error.messageText, " ");
+      problems.push(`${block.slug}.mdx:${block.mdxLine + index} ${text}`);
+    }
+  }
+  return { overrides, problems };
+}
+
+function optionsFor(overrides: Record<string, unknown>): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...BASE_OPTIONS, ...overrides };
+  for (const [name, value] of Object.entries(merged)) {
+    if (value === "default") delete merged[name];
+  }
+  return merged;
+}
+
 const requested = process.argv.slice(2);
 const slugs = requested.length > 0 ? requested : allSlugs();
 
@@ -148,56 +221,62 @@ mkdirSync(WORK_DIR, { recursive: true });
 const compiled = new Map<string, Block>();
 let skippedTotal = 0;
 const proseIssues: string[] = [];
+const directiveProblems: string[] = [];
+let groupCount = 0;
 
 try {
+  // Collect blocks, then bucket them by their distinct option set.
+  const groups = new Map<string, { overrides: Record<string, unknown>; files: string[] }>();
+
   for (const slug of slugs) {
     const { blocks, skipped, proseIssues: issues } = extractBlocks(slug);
     skippedTotal += skipped;
     proseIssues.push(...issues);
+
     blocks.forEach((block, index) => {
       const fileName = `${slug}__${String(index + 1).padStart(2, "0")}.${block.language}`;
+      const { overrides, problems } = parseDirectives(block);
+      directiveProblems.push(...problems);
+
+      const key = JSON.stringify(Object.entries(overrides).sort(([a], [b]) => a.localeCompare(b)));
+      let group = groups.get(key);
+      if (!group) {
+        group = { overrides, files: [] };
+        groups.set(key, group);
+      }
+      group.files.push(fileName);
+
+      const dir = path.join(WORK_DIR, `group-${[...groups.keys()].indexOf(key)}`);
+      mkdirSync(dir, { recursive: true });
       // `export {}` goes at the END so block line N is file line N.
-      writeFileSync(path.join(WORK_DIR, fileName), `${block.lines.join("\n")}\nexport {};\n`);
+      writeFileSync(path.join(dir, fileName), `${block.lines.join("\n")}\nexport {};\n`);
       compiled.set(fileName, block);
     });
   }
 
-  writeFileSync(
-    path.join(WORK_DIR, "tsconfig.json"),
-    JSON.stringify({
-      compilerOptions: {
-        target: "ES2022",
-        module: "esnext",
-        moduleResolution: "bundler",
-        lib: ["ES2023", "DOM", "DOM.Iterable"],
-        types: ["node"],
-        jsx: "react-jsx",
-        esModuleInterop: true,
-        strict: true,
-        noUncheckedIndexedAccess: true,
-        noImplicitOverride: true,
-        noFallthroughCasesInSwitch: true,
-        verbatimModuleSyntax: true,
-        noEmit: true,
-        skipLibCheck: true,
-      },
-      include: ["*.ts", "*.tsx"],
-    }),
-  );
-
-  let output = "";
-  try {
-    output = execFileSync("node", [TSC, "-p", WORK_DIR, "--pretty", "false"], { encoding: "utf8" });
-  } catch (error: unknown) {
-    // tsc exits non-zero when it finds errors; its report is on stdout.
-    const failure = error as { stdout?: string; stderr?: string };
-    output = `${failure.stdout ?? ""}${failure.stderr ?? ""}`;
-  }
-
+  groupCount = groups.size;
   const errors = new Map<string, string>(); // "file:line" -> message
-  for (const match of output.matchAll(/^(.+?\.tsx?)\((\d+),\d+\): error (TS\d+): (.*)$/gm)) {
-    const [, file, line, code, message] = match;
-    if (file && line) errors.set(`${path.basename(file)}:${line}`, `${code} ${message}`);
+
+  for (const [key, group] of groups) {
+    const dir = path.join(WORK_DIR, `group-${[...groups.keys()].indexOf(key)}`);
+    writeFileSync(
+      path.join(dir, "tsconfig.json"),
+      JSON.stringify({ compilerOptions: optionsFor(group.overrides), include: ["*.ts", "*.tsx"] }),
+    );
+
+    let output = "";
+    try {
+      output = execFileSync("node", [TSC, "-p", dir, "--pretty", "false"], { encoding: "utf8" });
+    } catch (error: unknown) {
+      // tsc exits non-zero when it finds errors; its report is on stdout.
+      const failure = error as { stdout?: string; stderr?: string };
+      output = `${failure.stdout ?? ""}${failure.stderr ?? ""}`;
+    }
+
+    for (const match of output.matchAll(/^(.+?\.tsx?)\((\d+),\d+\): error (TS\d+): (.*)$/gm)) {
+      const [, file, line, code, message] = match;
+      if (file && line) errors.set(`${path.basename(file)}:${line}`, `${code} ${message}`);
+    }
   }
 
   let problems = 0;
@@ -221,6 +300,11 @@ try {
     });
   }
 
+  for (const issue of directiveProblems) {
+    problems += 1;
+    console.log(`BAD DIRECTIVE ${issue}`);
+  }
+
   for (const issue of proseIssues) {
     problems += 1;
     console.log(`MDX PROSE    ${issue}`);
@@ -237,7 +321,7 @@ try {
   }
 
   console.log(
-    `\ntopics: ${slugs.length} | blocks: ${compiled.size} | skipped: ${skippedTotal} | ` +
+    `\ntopics: ${slugs.length} | blocks: ${compiled.size} | option sets: ${groupCount} | skipped: ${skippedTotal} | ` +
       `expected-error lines: ${claimed} | compiler errors: ${errors.size} | problems: ${problems}`,
   );
   process.exitCode = problems === 0 ? 0 : 1;
