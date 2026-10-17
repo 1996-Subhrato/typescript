@@ -278,6 +278,10 @@ example (users, products, orders, API responses) → `## Common mistakes` → `#
   `{2,5-7}` highlights lines. Headings inside fences are ignored by the TOC parser.
 - GitHub-flavoured Markdown tables / task lists (remark-gfm).
 
+**End-of-phase checklist:** `npm run typecheck` · `npm run lint` · `npm run check:content` ·
+`npm run build` · update this file · update the **Curriculum table and "N of 64" count in
+`README.md`** (it is hand-written and goes stale) · tick finished topics in `ROADMAP.md` · commit.
+
 **Gate conventions (decision #14):** self-contained `ts` blocks; `// Error: ...` on the exact
 failing line; use ```` ```js ```` for JavaScript, which is not compiled.
 
@@ -316,8 +320,10 @@ expected error and a snippet using undeclared `User`/`res`; one `// Error` comme
   as "Node's type stripping cannot run enums" or "TS 5.5 infers type predicates" were written
   from knowledge and are worth a skim.
 - Screenshots / smooth-scroll unavailable in the preview pane; visual/design review is on the user.
-- **Not a git repository.** Four phases are now complete and uncommitted. `git init` has not been
-  run because it was not requested; it is the single biggest risk to the work so far.
+- **Git:** repository initialised on `main`; Phases 0-3 are in baseline commit `9bec822`.
+  `origin` is configured but **nothing has been pushed** (not requested). From Phase 4 on,
+  commit once per phase. Windows prints LF->CRLF warnings; a `.gitattributes`
+  (`* text=auto eol=lf`) would silence them if wanted.
 
 ---
 
@@ -341,7 +347,7 @@ expected error and a snippet using undeclared `User`/`res`; one `// Error` comme
    npm run check:content
    ```
 
-4. Consider `git init` + a commit per phase before continuing.
+4. Optionally push the baseline commit: `git push -u origin main`.
 
 5. Say **"start Phase 4"** to begin Advanced Types.
 
@@ -356,3 +362,4 @@ expected error and a snippet using undeclared `User`/`res`; one `// Error` comme
 | 2026-08-23 | 1 | Docs shell: sidebar, mobile drawer, header, search palette, TOC, prev/next, copy buttons, prose styling. Corrected topic count 66 → 64. |
 | 2026-10-17 | 2 | 10 Level 1 topics. Built the content compile gate; fixed 2 defects it found in Phase 0 content. |
 | 2026-10-17 | 3 | 9 Level 2 topics. Moved the gate into `scripts/` as TypeScript + `npm run check:content`; mutation-tested it. |
+| 2026-10-17 | - | Initialised git, baseline commit `9bec822`. Rewrote `README.md` (curriculum table, scripts, quality gate, how to add a topic). Added `npm run typecheck` (`next typegen && tsc --noEmit`) because bare `tsc` fails on a fresh clone. |
