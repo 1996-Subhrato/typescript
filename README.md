@@ -40,11 +40,11 @@ full list is in [`ROADMAP.md`](./ROADMAP.md).
 | React + TypeScript | 7 | ✅ Complete |
 | Node.js + Express | 6 | ✅ Complete |
 | Next.js + TypeScript | 5 | ✅ Complete |
-| Real-World API Typing | 6 | ⏳ Next |
-| TypeScript Configuration | 3 | Planned |
-| Professional TypeScript | 7 | Planned |
+| Real-World API Typing | 6 | ✅ Complete |
+| TypeScript Configuration | 3 | ⏳ Next |
+| Professional TypeScript | 7 | ⏳ Next |
 
-**48 of 64 topics published.** Unwritten topics appear greyed out in the sidebar so the
+**54 of 64 topics published.** Unwritten topics appear greyed out in the sidebar so the
 whole path is visible up front.
 
 ## Features

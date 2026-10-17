@@ -1,0 +1,217 @@
+# Pagination & Response Envelopes
+
+## What
+
+Real APIs rarely return a bare array. They wrap data in an **envelope** (metadata around the
+payload) and split large collections into **pages**. Both are generic wrappers — the same
+shape holding different data — which makes them a perfect fit for generics.
+
+## Envelopes
+
+```ts
+type ApiEnvelope<T> = {
+  data: T;
+  meta?: { requestId: string; durationMs: number };
+};
+
+type User = { id: string; name: string };
+type Product = { id: string; name: string; priceCents: number };
+
+declare function getUser(id: string): Promise<ApiEnvelope<User>>;
+declare function getProducts(): Promise<ApiEnvelope<Product[]>>;
+
+async function demo(): Promise<void> {
+  const user = (await getUser("usr_1")).data; // User
+  const products = (await getProducts()).data; // Product[]
+  console.log(user.name, products.length);
+}
+```
+
+One definition, any payload. Envelopes that carry the success/failure flag are the
+discriminated unions from *Result & Error Types*; the failure side is the subject of
+*Error Modelling*.
+
+## Offset pagination
+
+"Give me page 3, 20 per page." Simple, supports jumping, and the usual choice for tables.
+
+```ts
+type OffsetPage<T> = {
+  items: readonly T[];
+  page: number; // 1-based
+  pageSize: number;
+  total: number; // total items across all pages
+};
+
+function totalPages(page: OffsetPage<unknown>): number {
+  return Math.ceil(page.total / page.pageSize);
+}
+
+function hasNextPage(page: OffsetPage<unknown>): boolean {
+  return page.page * page.pageSize < page.total;
+}
+
+type Order = { id: string; totalCents: number };
+declare const orders: OffsetPage<Order>;
+
+const pages = totalPages(orders); // OffsetPage<Order> is accepted where OffsetPage<unknown> is expected
+```
+
+`OffsetPage<Order>` is assignable to `OffsetPage<unknown>`, and because `items` is
+`readonly` that is genuinely safe: a read-only array can be treated as an array of something
+wider. TypeScript allows the same assignment for a mutable `T[]` too (arrays are covariant,
+see *Structural Typing*), but there it is unsound, because someone could push a non-`Order`
+through the wider view. Prefer `readonly` for data you only read.
+
+## Cursor pagination
+
+"Give me what comes after this cursor." Stable under inserts and deletes, and the usual
+choice for feeds and large datasets. There is no total and no jumping; the server
+decides what a cursor means.
+
+```ts
+type CursorPage<T> = {
+  items: readonly T[];
+  nextCursor: string | null; // null when there is nothing more
+};
+
+type Event = { id: string; type: string };
+
+declare function fetchEvents(cursor?: string): Promise<CursorPage<Event>>;
+
+async function loadMore(current: CursorPage<Event>): Promise<CursorPage<Event> | undefined> {
+  if (current.nextCursor === null) return undefined;
+  return fetchEvents(current.nextCursor);
+}
+```
+
+### Make cursors opaque
+
+A cursor is the server's business. If it is typed as `string`, callers can invent or edit
+one. A brand (*Branded Types*) means the only way to obtain a cursor is from a response:
+
+```ts
+declare const brand: unique symbol;
+type Cursor = string & { readonly [brand]: "Cursor" };
+
+type CursorPage<T> = { items: readonly T[]; nextCursor: Cursor | null };
+
+declare function fetchEvents(cursor?: Cursor): Promise<CursorPage<{ id: string }>>;
+
+async function demo(page: CursorPage<{ id: string }>): Promise<void> {
+  if (page.nextCursor !== null) await fetchEvents(page.nextCursor); // from a response: fine
+  await fetchEvents("page=2"); // Error: 'string' is not assignable to 'Cursor'
+}
+```
+
+## Generic helpers over pages
+
+Because the wrapper is generic, helpers are too.
+
+```ts
+type CursorPage<T> = { items: readonly T[]; nextCursor: string | null };
+
+function mapPage<T, U>(page: CursorPage<T>, fn: (item: T) => U): CursorPage<U> {
+  return { items: page.items.map(fn), nextCursor: page.nextCursor };
+}
+
+type ItemOf<P> = P extends { items: readonly (infer Item)[] } ? Item : never;
+
+type UserDto = { id: string; created_at: string };
+type User = { id: string; createdAt: Date };
+
+declare const dtoPage: CursorPage<UserDto>;
+
+const userPage = mapPage(dtoPage, (dto): User => ({ id: dto.id, createdAt: new Date(dto.created_at) }));
+const first: ItemOf<typeof userPage> | undefined = userPage.items[0]; // User | undefined
+```
+
+`ItemOf` pulls the element type out of any page with a conditional type and `infer`
+(*Conditional Types & infer*).
+
+## Iterating every item: an async generator
+
+Loading all pages is a loop that you should write once, generically.
+
+```ts
+type CursorPage<T> = { items: readonly T[]; nextCursor: string | null };
+
+export async function* iterateAll<T>(
+  fetchPage: (cursor: string | undefined) => Promise<CursorPage<T>>,
+): AsyncGenerator<T, void, undefined> {
+  let cursor: string | undefined;
+
+  do {
+    const page = await fetchPage(cursor);
+    yield* page.items;
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+}
+
+type User = { id: string; name: string };
+declare function fetchUsers(cursor: string | undefined): Promise<CursorPage<User>>;
+
+async function printNames(): Promise<void> {
+  for await (const user of iterateAll(fetchUsers)) {
+    console.log(user.name.toUpperCase()); // user: User, inferred from fetchUsers
+  }
+}
+```
+
+`AsyncGenerator<T, void, undefined>` is the return type: yields `T`, returns nothing, takes
+nothing back from `next()`. `T` is inferred from the page function, so the consumer needs no
+annotation.
+
+## Validating pages with a schema factory
+
+A schema for "a page of X" should be written once and reused for every X. A function that
+returns a schema is the runtime twin of a generic type:
+
+```ts
+import { z } from "zod";
+
+function cursorPageSchema<S extends z.ZodType>(item: S) {
+  return z.object({
+    items: z.array(item),
+    nextCursor: z.string().nullable(),
+  });
+}
+
+const UserSchema = z.object({ id: z.string(), name: z.string() });
+const UserPageSchema = cursorPageSchema(UserSchema);
+
+type UserPage = z.output<typeof UserPageSchema>;
+// { items: { id: string; name: string }[]; nextCursor: string | null }
+
+const page: UserPage = UserPageSchema.parse({ items: [{ id: "usr_1", name: "Ada" }], nextCursor: null });
+const wrong: UserPage = { items: [{ id: 1, name: "Ada" }], nextCursor: null }; // Error: 'number' is not assignable to 'string'
+```
+
+## Which style to choose
+
+| | Offset | Cursor |
+| --- | --- | --- |
+| Jump to page N | yes | no |
+| Total count | yes | usually no |
+| Stable when data changes | no (rows shift) | yes |
+| Good for | admin tables | feeds, infinite scroll, large sets |
+
+Follow whichever the API gives you, and model **exactly** its fields. Do not invent a
+`total` the server does not send.
+
+## Common mistakes
+
+- **Typing the page as `T[]`** and losing `nextCursor` / `total`.
+- **Mutable `items`** where `readonly` would allow wider assignment and prevent edits.
+- **A `string` cursor** that callers can fabricate.
+- **Looping on `nextCursor` without a stop condition** — a server bug becomes an endless loop.
+- **Nested envelopes written by hand repeatedly** instead of one generic type.
+- **Assuming 1-based vs 0-based pages** without writing it in a comment or a brand.
+
+## Practice
+
+1. Write `OffsetPage` and `CursorPage` as one discriminated union with a `kind` field. When
+   is that helpful and when is it unnecessary?
+2. Add a `maxPages` guard to `iterateAll` so a server returning cursors forever cannot loop
+   indefinitely.
+3. Write `offsetPageSchema` as a schema factory, like `cursorPageSchema`.

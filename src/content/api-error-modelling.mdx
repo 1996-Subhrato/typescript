@@ -1,0 +1,352 @@
+# Error Modelling
+
+## What
+
+An API's failures are as much a part of its contract as its successes, and usually less
+carefully typed. A good error model answers two questions: *what can go wrong*, and *what
+should the caller do about each one*.
+
+Four different things all arrive as "an error":
+
+| Source | Example | Caller's response |
+| ------ | ------- | ----------------- |
+| **Network** | offline, DNS, timeout | retry, show "you're offline" |
+| **HTTP error with a body** | `409 EMAIL_TAKEN` | show a specific message |
+| **Malformed success** | `200` with the wrong shape | report a bug; do not retry blindly |
+| **Validation** | `422` with field errors | show them next to the inputs |
+
+Collapsing them into `catch (e) { alert("Something went wrong") }` throws away exactly the
+information the user needs.
+
+## The wire format
+
+Agree on one error shape across the API. This is a small, typical one:
+
+```ts
+const ERROR_CODES = [
+  "VALIDATION_FAILED",
+  "UNAUTHENTICATED",
+  "FORBIDDEN",
+  "NOT_FOUND",
+  "EMAIL_TAKEN",
+  "RATE_LIMITED",
+] as const;
+
+type ErrorCode = (typeof ERROR_CODES)[number];
+
+type ErrorBody = {
+  error: {
+    code: string; // a string on the wire: the server may add codes your client has not seen
+    message: string;
+    fieldErrors?: Record<string, string[]>;
+    retryAfterSeconds?: number;
+  };
+};
+
+function isErrorCode(value: string): value is ErrorCode {
+  return (ERROR_CODES as readonly string[]).includes(value);
+}
+```
+
+Note `code: string` in `ErrorBody` but `ErrorCode` in the domain: the *wire* type is honest
+about what could arrive, and the guard turns it into the closed union you can switch on.
+
+## The client-side error type
+
+Convert every failure, from any source, into one discriminated union
+(*Discriminated Unions*, *Result & Error Types*).
+
+```ts
+export type ApiError =
+  | { kind: "network"; message: string }
+  | { kind: "validation"; fieldErrors: Record<string, string[]> }
+  | { kind: "unauthenticated" }
+  | { kind: "forbidden" }
+  | { kind: "not-found" }
+  | { kind: "conflict"; code: "EMAIL_TAKEN" }
+  | { kind: "rate-limited"; retryAfterSeconds: number | undefined }
+  | { kind: "server"; status: number }
+  | { kind: "unexpected"; status: number };
+```
+
+Every member carries what the caller needs and nothing else. `validation` has the field
+errors; `rate-limited` has the wait; `unauthenticated` needs no payload at all.
+
+## Parsing the error body: `unknown` again
+
+An error response is also data from outside, so it is `unknown` first
+(*unknown at the Boundary*):
+
+```ts
+type ApiError =
+  | { kind: "validation"; fieldErrors: Record<string, string[]> }
+  | { kind: "unauthenticated" }
+  | { kind: "forbidden" }
+  | { kind: "not-found" }
+  | { kind: "conflict"; code: "EMAIL_TAKEN" }
+  | { kind: "rate-limited"; retryAfterSeconds: number | undefined }
+  | { kind: "server"; status: number }
+  | { kind: "unexpected"; status: number };
+
+type ErrorDetails = {
+  code: string;
+  message: string;
+  fieldErrors: Record<string, string[]> | undefined;
+  retryAfterSeconds: number | undefined;
+};
+
+function isFieldErrors(value: unknown): value is Record<string, string[]> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.values(value).every(
+      (messages) => Array.isArray(messages) && messages.every((message) => typeof message === "string"),
+    )
+  );
+}
+
+function readErrorDetails(body: unknown): ErrorDetails | undefined {
+  if (typeof body !== "object" || body === null || !("error" in body)) return undefined;
+  const error = body.error;
+  if (typeof error !== "object" || error === null) return undefined;
+
+  const code = "code" in error ? error.code : undefined;
+  const message = "message" in error ? error.message : undefined;
+  if (typeof code !== "string" || typeof message !== "string") return undefined;
+
+  const fieldErrors = "fieldErrors" in error && isFieldErrors(error.fieldErrors) ? error.fieldErrors : undefined;
+  const retryAfterSeconds =
+    "retryAfterSeconds" in error && typeof error.retryAfterSeconds === "number" ? error.retryAfterSeconds : undefined;
+
+  return { code, message, fieldErrors, retryAfterSeconds };
+}
+
+export function toApiError(status: number, body: unknown): ApiError {
+  const details = readErrorDetails(body);
+
+  if (status === 401) return { kind: "unauthenticated" };
+  if (status === 403) return { kind: "forbidden" };
+  if (status === 404) return { kind: "not-found" };
+  if (status === 429) return { kind: "rate-limited", retryAfterSeconds: details?.retryAfterSeconds };
+  if (details?.code === "EMAIL_TAKEN") return { kind: "conflict", code: "EMAIL_TAKEN" };
+  if (details?.fieldErrors !== undefined) return { kind: "validation", fieldErrors: details.fieldErrors };
+  if (status >= 500) return { kind: "server", status };
+
+  return { kind: "unexpected", status };
+}
+```
+
+Unrecognised codes fall through to `unexpected` rather than crashing, and a malformed
+`fieldErrors` is ignored rather than trusted. A schema would replace most of
+`readErrorDetails`; the shape of the function would stay the same.
+
+## Handling every case
+
+The payoff of the union is that the compiler makes you decide, for each kind, what
+happens.
+
+```ts
+type ApiError =
+  | { kind: "network"; message: string }
+  | { kind: "validation"; fieldErrors: Record<string, string[]> }
+  | { kind: "unauthenticated" }
+  | { kind: "forbidden" }
+  | { kind: "not-found" }
+  | { kind: "conflict"; code: "EMAIL_TAKEN" }
+  | { kind: "rate-limited"; retryAfterSeconds: number | undefined }
+  | { kind: "server"; status: number }
+  | { kind: "unexpected"; status: number };
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled error: ${JSON.stringify(value)}`);
+}
+
+export function messageFor(error: ApiError): string {
+  switch (error.kind) {
+    case "network":
+      return "You appear to be offline.";
+    case "validation":
+      return "Please fix the highlighted fields.";
+    case "unauthenticated":
+      return "Please sign in again.";
+    case "forbidden":
+      return "You do not have access to this.";
+    case "not-found":
+      return "We could not find that.";
+    case "conflict":
+      return "That email is already registered.";
+    case "rate-limited":
+      return error.retryAfterSeconds === undefined
+        ? "Too many requests. Try again shortly."
+        : `Too many requests. Try again in ${error.retryAfterSeconds}s.`;
+    case "server":
+      return "Something went wrong on our side.";
+    case "unexpected":
+      return `Unexpected response (${error.status}).`;
+    default:
+      return assertNever(error);
+  }
+}
+
+export function isRetryable(error: ApiError): boolean {
+  switch (error.kind) {
+    case "network":
+    case "server":
+    case "rate-limited":
+      return true;
+    case "validation":
+    case "unauthenticated":
+    case "forbidden":
+    case "not-found":
+    case "conflict":
+    case "unexpected":
+      return false;
+    default:
+      return assertNever(error);
+  }
+}
+```
+
+Add a new member to `ApiError` and both functions stop compiling. That is how a new
+failure mode gets a user-facing message instead of a blank screen.
+
+## Narrowing to one kind
+
+`Extract` (*Utility Types: Unions & Functions*) pulls a single member out, so a function
+can demand exactly the error it handles:
+
+```ts
+type ApiError =
+  | { kind: "network"; message: string }
+  | { kind: "validation"; fieldErrors: Record<string, string[]> }
+  | { kind: "not-found" };
+
+type ValidationError = Extract<ApiError, { kind: "validation" }>;
+
+function showFieldErrors(error: ValidationError): string[] {
+  return Object.values(error.fieldErrors).flat();
+}
+
+declare const error: ApiError;
+
+if (error.kind === "validation") {
+  showFieldErrors(error); // narrowed: allowed
+}
+showFieldErrors(error); // Error: the other kinds are not assignable to ValidationError
+```
+
+## Field errors typed to the form
+
+The server sends field errors keyed by strings. Your form has a fixed set of fields.
+Convert once, so components get a typed map:
+
+```ts
+type FieldErrors<T> = { [K in keyof T]?: string[] };
+
+function pickFieldErrors<T extends object>(
+  raw: Record<string, string[]>,
+  fields: readonly (keyof T & string)[],
+): FieldErrors<T> {
+  const result: FieldErrors<T> = {};
+  for (const field of fields) {
+    const messages = raw[field];
+    if (messages !== undefined) result[field] = messages;
+  }
+  return result;
+}
+
+type SignupForm = { email: string; password: string };
+
+const errors = pickFieldErrors<SignupForm>({ email: ["Invalid email"], nickname: ["ignored"] }, ["email", "password"]);
+
+const emailErrors: string[] | undefined = errors.email;
+errors.nickname; // Error: Property 'nickname' does not exist on type 'FieldErrors<SignupForm>'
+```
+
+Unknown fields from the server are dropped, and the form sees only fields it owns. The
+same `FieldErrors` shape is what the Server Actions form state used (*Server Actions &
+Forms*).
+
+## Return it, or throw it?
+
+*Result & Error Types* argued for returning expected failures. Sometimes a library wants an
+exception (a data-fetching library, an error boundary). Keep the typed error and carry it
+inside the exception:
+
+```ts
+type ApiError = { kind: "not-found" } | { kind: "server"; status: number };
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+export class ApiRequestError extends Error {
+  constructor(public readonly apiError: ApiError) {
+    super(`API request failed: ${apiError.kind}`);
+    this.name = "ApiRequestError";
+  }
+}
+
+export function unwrap<T>(result: Result<T, ApiError>): T {
+  if (result.ok) return result.value;
+  throw new ApiRequestError(result.error);
+}
+
+function describe(caught: unknown): string {
+  return caught instanceof ApiRequestError ? caught.apiError.kind : "unknown";
+}
+```
+
+Whatever catches it narrows with `instanceof` and recovers the full typed `ApiError`; the
+information survived the throw.
+
+## The server's side
+
+The producing end should be just as exhaustive. Map each domain error to one status and one
+body, in one place, and never leak internals:
+
+```ts
+type DomainError =
+  | { kind: "not-found"; id: string }
+  | { kind: "email-taken"; email: string }
+  | { kind: "invalid"; fieldErrors: Record<string, string[]> };
+
+type ErrorResponse = {
+  status: number;
+  body: { error: { code: string; message: string; fieldErrors?: Record<string, string[]> } };
+};
+
+export function toErrorResponse(error: DomainError): ErrorResponse {
+  switch (error.kind) {
+    case "not-found":
+      return { status: 404, body: { error: { code: "NOT_FOUND", message: "Resource not found" } } };
+    case "email-taken":
+      return { status: 409, body: { error: { code: "EMAIL_TAKEN", message: "Email already registered" } } };
+    case "invalid":
+      return {
+        status: 422,
+        body: { error: { code: "VALIDATION_FAILED", message: "Invalid input", fieldErrors: error.fieldErrors } },
+      };
+  }
+}
+```
+
+Messages are fixed strings, not `error.message` copied from an exception: stack traces,
+SQL and file paths do not belong in a response.
+
+## Common mistakes
+
+- **One catch-all error** with a message string, so callers parse text to decide what to do.
+- **`code: string` compared with `===` everywhere.** Parse it into a closed union once.
+- **A closed union straight from the wire**, which breaks when the server adds a code.
+- **Treating HTTP status alone as the error type.** `409` can mean many things.
+- **Retrying everything**, including 4xx errors that will never succeed.
+- **Leaking exception messages** to clients.
+- **`catch (error) { error.message }`.** `error` is `unknown`.
+
+## Practice
+
+1. Add `{ kind: "timeout" }` to `ApiError` and follow the compiler to `messageFor` and
+   `isRetryable`.
+2. Write `retryDelayMs(error: ApiError, attempt: number): number | undefined` that backs off
+   for retryable errors and honours `retryAfterSeconds`.
+3. Write the server's `toErrorResponse` with `satisfies` so that adding a `DomainError` kind
+   without a mapping is an error, then do the same using `Record<DomainError["kind"], ...>`.

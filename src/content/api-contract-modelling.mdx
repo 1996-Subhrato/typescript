@@ -1,0 +1,230 @@
+# Modelling an API Contract
+
+## What
+
+A **contract** is one description of an API that both the client and the server rely on.
+Without one, each side keeps its own idea of "what `POST /users` takes", and they drift
+apart. With a typed contract, adding or changing a route becomes a compile error on
+whichever side is out of date.
+
+## A contract as a type
+
+One entry per route: the key is `METHOD /path`, the value lists what goes in and what
+comes out.
+
+```ts
+type User = { id: string; name: string; email: string };
+type CreateUserBody = { name: string; email: string };
+type Page<T> = { items: readonly T[]; nextCursor: string | null };
+
+type ApiContract = {
+  "GET /users": { query: { cursor?: string; limit?: number }; response: Page<User> };
+  "GET /users/:id": { response: User };
+  "POST /users": { body: CreateUserBody; response: User };
+  "DELETE /users/:id": { response: null };
+};
+```
+
+It is plain TypeScript: a type that can be imported by the browser code and the server
+code alike.
+
+## Deriving types for one route
+
+Use `keyof`, indexed access and conditional types (*Constraints, keyof & Indexed Access*,
+*Conditional Types & infer*) to read pieces back out.
+
+```ts
+type User = { id: string; name: string };
+
+type ApiContract = {
+  "GET /users/:id": { response: User };
+  "POST /users": { body: { name: string }; response: User };
+};
+
+type Route = keyof ApiContract; // "GET /users/:id" | "POST /users"
+
+type ResponseOf<R extends Route> = ApiContract[R]["response"];
+type BodyOf<R extends Route> = ApiContract[R] extends { body: infer B } ? B : never;
+
+type CreatedUser = ResponseOf<"POST /users">; // User
+type CreateBody = BodyOf<"POST /users">; // { name: string }
+type NoBody = BodyOf<"GET /users/:id">; // never
+```
+
+## Path parameters, derived from the path itself
+
+Do not write `{ params: { id: string } }` next to a path that already contains `:id`.
+A template literal type (*Template Literal Types*) can extract it:
+
+```ts
+type ExtractParams<Path extends string> =
+  Path extends `${string}:${infer Param}/${infer Rest}`
+    ? Param | ExtractParams<`/${Rest}`>
+    : Path extends `${string}:${infer Param}`
+      ? Param
+      : never;
+
+type PathParams<R extends string> = R extends `${string} ${infer Path}` ? ExtractParams<Path> : never;
+
+type A = PathParams<"GET /users/:id">; // "id"
+type B = PathParams<"GET /users/:userId/orders/:orderId">; // "userId" | "orderId"
+type C = PathParams<"GET /users">; // never
+
+const ok: A = "id";
+const wrong: A = "userId"; // Error: '"userId"' is not assignable to '"id"'
+```
+
+## A typed `call` function
+
+Combine the pieces: the route name determines the input, and the input determines whether
+an argument is needed at all.
+
+```ts
+type User = { id: string; name: string; email: string };
+type Page<T> = { items: readonly T[]; nextCursor: string | null };
+
+type ApiContract = {
+  "GET /users": { query: { limit?: number }; response: Page<User> };
+  "GET /users/:id": { response: User };
+  "POST /users": { body: { name: string; email: string }; response: User };
+  "DELETE /users/:id": { response: null };
+};
+
+type Route = keyof ApiContract;
+
+type ExtractParams<Path extends string> =
+  Path extends `${string}:${infer Param}/${infer Rest}`
+    ? Param | ExtractParams<`/${Rest}`>
+    : Path extends `${string}:${infer Param}`
+      ? Param
+      : never;
+
+type PathParams<R extends string> = R extends `${string} ${infer Path}` ? ExtractParams<Path> : never;
+
+type ParamsInput<R extends Route> = [PathParams<R>] extends [never]
+  ? unknown
+  : { params: { [K in PathParams<R>]: string } };
+
+type InputOf<R extends Route> = Omit<ApiContract[R], "response"> & ParamsInput<R>;
+type ResponseOf<R extends Route> = ApiContract[R]["response"];
+
+declare function call<R extends Route>(
+  route: R,
+  ...args: keyof InputOf<R> extends never ? [] : [input: InputOf<R>]
+): Promise<ResponseOf<R>>;
+
+async function demo(): Promise<void> {
+  const users = await call("GET /users", { query: { limit: 10 } }); // Page<User>
+  const user = await call("GET /users/:id", { params: { id: "usr_1" } }); // User
+  const created = await call("POST /users", { body: { name: "Ada", email: "ada@example.com" } }); // User
+  await call("DELETE /users/:id", { params: { id: "usr_1" } }); // null
+
+  console.log(users.items.length, user.name, created.email);
+
+  await call("GET /users/:id"); // Error: Expected 2 arguments, but got 1
+  await call("POST /users", { body: { name: "Ada" } }); // Error: Property 'email' is missing
+  await call("GET /users/:id", { params: { userId: "usr_1" } }); // Error: 'userId' does not exist (the param is 'id')
+  await call("PATCH /users/:id", { params: { id: "usr_1" } }); // Error: not a route in the contract
+}
+```
+
+What the compiler now enforces, without a single hand-written overload:
+
+- The route must exist.
+- Required inputs must be supplied, and only the ones that route has.
+- Path params must match the path text.
+- Routes without inputs take no second argument.
+- The return type is the route's response.
+
+## The server side checks the same contract
+
+Implementing every route is a mapped type over the contract:
+
+```ts
+type User = { id: string; name: string };
+
+type ApiContract = {
+  "GET /users/:id": { response: User };
+  "POST /users": { body: { name: string }; response: User };
+  "DELETE /users/:id": { response: null };
+};
+
+type Route = keyof ApiContract;
+type Handlers = {
+  [R in Route]: (input: Omit<ApiContract[R], "response">) => Promise<ApiContract[R]["response"]>;
+};
+
+const handlers: Handlers = { // Error: Property '"DELETE /users/:id"' is missing
+  "GET /users/:id": async () => ({ id: "usr_1", name: "Ada" }),
+  "POST /users": async ({ body }) => ({ id: "usr_2", name: body.name }),
+};
+```
+
+Add a route to `ApiContract` and the compiler lists every place that must now handle it:
+the server implementation *and* anything exhaustively mapping over routes. Change a
+response type and both ends are flagged.
+
+## Schema-first contracts
+
+A type-only contract is erased at runtime. If you also want the *check* to come from the
+same declaration, make the contract out of schemas and derive the types from them:
+
+```ts
+import { z } from "zod";
+
+const UserSchema = z.object({ id: z.string(), name: z.string() });
+const CreateUserSchema = z.object({ name: z.string().min(1) });
+
+const routes = {
+  getUser: { method: "GET", path: "/users/:id", response: UserSchema },
+  createUser: { method: "POST", path: "/users", body: CreateUserSchema, response: UserSchema },
+} as const;
+
+type Routes = typeof routes;
+type RouteName = keyof Routes;
+
+type ResponseOf<K extends RouteName> = z.output<Routes[K]["response"]>;
+type BodyOf<K extends RouteName> = Routes[K] extends { body: infer B extends z.ZodType } ? z.input<B> : never;
+
+declare function send<K extends RouteName>(name: K, body: BodyOf<K>): Promise<ResponseOf<K>>;
+
+async function demo(): Promise<void> {
+  const user = await send("createUser", { name: "Ada" }); // { id: string; name: string }
+  console.log(user.id);
+
+  await send("createUser", { name: 42 }); // Error: 'number' is not assignable to 'string'
+}
+```
+
+Now the server validates incoming bodies with `routes.createUser.body` and the client types
+its calls from the same object. Nothing is written twice.
+
+## Sharing the contract
+
+- **Same repository:** put the contract in a shared module and `import type` it from both
+  sides. In this project's Next.js terms, a route handler and the browser code can import the
+  same `types` file (*Route Handlers*).
+- **Monorepo:** publish it as an internal package.
+- **Separate repositories or languages:** generate types from an OpenAPI document instead of
+  writing them by hand. Tools exist for exactly this, and for frameworks (tRPC is the best
+  known) that infer the contract from the server implementation. The concepts here are what
+  they automate.
+
+## Common mistakes
+
+- **Writing the same shape on both sides.** Share it.
+- **Treating the contract as validation.** A type contract is compile-time only; pair it
+  with schemas at the boundary.
+- **A contract entry per component** rather than per route.
+- **Duplicating path params** next to the path string.
+- **Breaking changes without versioning.** Types catch the in-repo callers, not the apps
+  already deployed.
+- **Making every field optional** to avoid a coordinated deploy.
+
+## Practice
+
+1. Add `"PATCH /users/:id"` with `body: Partial<CreateUserBody>` and watch the server
+   `Handlers` object fail until you implement it.
+2. Write `routesWithBody`: a type that is the union of routes whose entry has a `body`.
+3. Extend `call` so the `query` of `GET /users` is optional (the second argument stays
+   required only when other inputs are).

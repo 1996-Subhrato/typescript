@@ -117,12 +117,12 @@ export const levels = [
     summary: "The patterns that stop bad data from becoming runtime bugs.",
     difficulty: "advanced",
     topics: [
-      { slug: "typing-api-responses", title: "Typing API Responses", summary: "Nested objects, arrays, optional and nullable fields.", status: "planned" },
-      { slug: "generic-api-client", title: "A Generic API Client", summary: "One typed fetch wrapper for a whole application.", status: "planned" },
-      { slug: "pagination-and-envelopes", title: "Pagination and Response Envelopes", summary: "Generic wrappers for paged and wrapped payloads.", status: "planned" },
-      { slug: "unknown-at-the-boundary", title: "unknown at the Boundary", summary: "Treating every network response as untrusted, then narrowing.", status: "planned" },
-      { slug: "api-contract-modelling", title: "Modelling an API Contract", summary: "Shared request/response types between client and server.", status: "planned" },
-      { slug: "api-error-modelling", title: "Error Modelling", summary: "Typed error responses that callers must handle.", status: "planned" },
+      { slug: "typing-api-responses", title: "Typing API Responses", summary: "Nested objects, arrays, optional and nullable fields.", status: "published" },
+      { slug: "generic-api-client", title: "A Generic API Client", summary: "One typed fetch wrapper for a whole application.", status: "published" },
+      { slug: "pagination-and-envelopes", title: "Pagination and Response Envelopes", summary: "Generic wrappers for paged and wrapped payloads.", status: "published" },
+      { slug: "unknown-at-the-boundary", title: "unknown at the Boundary", summary: "Treating every network response as untrusted, then narrowing.", status: "published" },
+      { slug: "api-contract-modelling", title: "Modelling an API Contract", summary: "Shared request/response types between client and server.", status: "published" },
+      { slug: "api-error-modelling", title: "Error Modelling", summary: "Typed error responses that callers must handle.", status: "published" },
     ],
   },
   {

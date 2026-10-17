@@ -1,0 +1,217 @@
+# Typing API Responses
+
+## What
+
+Typing an API response means writing down, as precisely as the documentation allows, what
+a JSON payload can contain. The details that matter are the ones that decide whether your
+code crashes: **which fields can be missing, which can be `null`, and which values are
+limited to a fixed set.**
+
+Start from a real payload.
+
+```json
+{
+  "id": "ord_1042",
+  "status": "paid",
+  "total_cents": 4999,
+  "coupon_code": "WELCOME10",
+  "shipped_at": null,
+  "customer": { "id": "usr_7", "name": "Ada", "email": null },
+  "items": [
+    { "sku": "kb-01", "name": "Keyboard", "unit_price_cents": 4999, "quantity": 1 }
+  ],
+  "payment": { "type": "card", "last4": "4242", "brand": "visa" }
+}
+```
+
+## Write the wire type
+
+A **wire type** (often called a DTO) mirrors the payload exactly: same names, same
+casing, same strings for dates. It describes what arrives, not what you wish had arrived.
+
+```ts
+type OrderStatus = "pending" | "paid" | "shipped" | "cancelled";
+
+type OrderItemDto = {
+  sku: string;
+  name: string;
+  unit_price_cents: number;
+  quantity: number;
+};
+
+type PaymentDto =
+  | { type: "card"; last4: string; brand: "visa" | "mastercard" }
+  | { type: "paypal"; email: string };
+
+type OrderDto = {
+  id: string;
+  status: OrderStatus;
+  total_cents: number;
+  coupon_code?: string; // the key may be absent
+  shipped_at: string | null; // the key is present; the value may be null
+  customer: { id: string; name: string; email: string | null };
+  items: OrderItemDto[]; // may be empty; never absent
+  payment: PaymentDto;
+};
+```
+
+Read the comments: each field encodes a different kind of uncertainty, and each one
+changes how you must use it.
+
+## Optional is not nullable
+
+| Declaration | Meaning | Check with |
+| ----------- | ------- | ---------- |
+| `coupon_code?: string` | Key may be **missing** | `=== undefined` |
+| `shipped_at: string \| null` | Key is present; value may be **null** | `=== null` |
+| `note?: string \| null` | Missing **or** null | `== null` (or `?? fallback`) |
+
+```ts
+type OrderDto = {
+  coupon_code?: string;
+  shipped_at: string | null;
+  customer: { id: string; email: string | null };
+};
+
+declare const order: OrderDto;
+
+order.coupon_code.toUpperCase(); // Error: 'order.coupon_code' is possibly 'undefined'
+order.shipped_at.slice(0, 10); // Error: 'order.shipped_at' is possibly 'null'
+order.customer.email.toLowerCase(); // Error: 'order.customer.email' is possibly 'null'
+
+const coupon = order.coupon_code?.toUpperCase() ?? "none";
+const shipped = order.shipped_at === null ? "not shipped" : order.shipped_at.slice(0, 10);
+```
+
+Get this wrong in either direction and you are lying to the compiler. Declaring
+`shipped_at?: string` when the API sends `null` makes `if (order.shipped_at === undefined)`
+quietly never true. Take the distinction from the API documentation or an OpenAPI
+schema, and re-check it against real responses.
+
+## Unions in payloads
+
+When a field's shape depends on a tag, model it as a discriminated union
+(*Discriminated Unions*), exactly as the API describes it:
+
+```ts
+type PaymentDto =
+  | { type: "card"; last4: string; brand: "visa" | "mastercard" }
+  | { type: "paypal"; email: string };
+
+function describePayment(payment: PaymentDto): string {
+  switch (payment.type) {
+    case "card":
+      return `${payment.brand} ending ${payment.last4}`;
+    case "paypal":
+      return `PayPal (${payment.email})`;
+  }
+}
+```
+
+Add a `"bank_transfer"` payment type later and this `switch` fails to compile until it is
+handled.
+
+## Wire type to domain type
+
+Do not let the wire shape spread through the application. Convert once, at the edge, to
+the type the rest of the code wants: camelCase names, real `Date` objects, and
+`undefined` where the API used a missing key.
+
+```ts
+type OrderDto = {
+  id: string;
+  total_cents: number;
+  coupon_code?: string;
+  shipped_at: string | null;
+  customer: { id: string; name: string };
+};
+
+type Order = {
+  id: string;
+  totalCents: number;
+  couponCode: string | undefined;
+  shippedAt: Date | null;
+  customer: { id: string; name: string };
+};
+
+function toOrder(dto: OrderDto): Order {
+  return {
+    id: dto.id,
+    totalCents: dto.total_cents,
+    couponCode: dto.coupon_code,
+    shippedAt: dto.shipped_at === null ? null : new Date(dto.shipped_at),
+    customer: dto.customer,
+  };
+}
+```
+
+A `Date` is not JSON. On the wire it is a string, so a response type containing `Date`
+is wrong (*Database Models* showed the `Serialized<T>` helper for the reverse mapping).
+The conversion belongs in the mapper.
+
+## Values that may grow
+
+An API can add a status next quarter. A union that lists only today's values is a promise
+you cannot keep:
+
+```ts
+const KNOWN_STATUSES = ["pending", "paid", "shipped", "cancelled"] as const;
+type KnownStatus = (typeof KNOWN_STATUSES)[number];
+
+function parseStatus(raw: string): KnownStatus | "unknown" {
+  return (KNOWN_STATUSES as readonly string[]).includes(raw) ? (raw as KnownStatus) : "unknown";
+}
+
+const statusLabel: Record<KnownStatus | "unknown", string> = {
+  pending: "Awaiting payment",
+  paid: "Paid",
+  shipped: "On its way",
+  cancelled: "Cancelled",
+  unknown: "Status unavailable",
+};
+
+const label = statusLabel[parseStatus("refunded")]; // "Status unavailable", not a crash
+```
+
+The cast in `parseStatus` is safe because `includes` just proved it. The `Record` forces a
+label for every case, including `unknown`.
+
+## Other details that bite
+
+- **IDs are strings**, even when they look numeric. Large integers can lose precision in
+  JavaScript, and an `"ord_1042"` prefix is common. Brand them (*Branded Types*) if mixing
+  them up is plausible.
+- **Money is integers** (cents) in the payload. Name the unit in the field (`total_cents`)
+  and in the domain type.
+- **Empty is not missing.** `items: []` and an absent `items` are different states; decide
+  which the API means, and type it.
+- **Do not make everything `Partial`** "to be safe". It hides the fields you can rely on
+  and pushes `undefined` checks everywhere.
+
+## What this does *not* do
+
+All of this describes what the response *should* be. A type annotation does not check the
+network. A server bug, a proxy, or an outdated type can all deliver something else. That
+gap is the subject of *unknown at the Boundary*; this topic gives you the types to check
+against.
+
+## Common mistakes
+
+- **Marking a nullable field optional** (or the reverse).
+- **Typing a date field as `Date`.** It is a string until you convert it.
+- **Using the wire type everywhere**, so snake_case and `null`s leak into components.
+- **A closed union for a value the server may extend.**
+- **One giant `any` response type** "until the API settles".
+- **Writing the type from a single sample.** A sample cannot show which fields are optional.
+
+## Practice
+
+1. Write the wire type for this payload, deciding optional vs nullable for each field, then
+   a domain type and a mapper:
+
+   ```json
+   { "id": "prd_9", "name": "Mouse", "price_cents": 2500, "discount_percent": null, "tags": [], "archived_at": null }
+   ```
+
+2. Add a `"gift_card"` payment type to `PaymentDto` and follow the compiler.
+3. Write `parseStatus` so that it narrows without a cast.

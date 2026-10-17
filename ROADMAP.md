@@ -88,12 +88,12 @@ Taught using this repository as the worked example.
 
 ## Level 4d — Real-World API Typing · *Phase 8* · 6 topics
 
-1. **Typing API Responses** — nested objects, arrays, optional vs nullable fields
-2. **A Generic API Client** — one typed `fetch` wrapper for a whole application
-3. **Pagination & Response Envelopes** — generic wrappers for paged/wrapped payloads
-4. **unknown at the Boundary** — treat every response as untrusted, then narrow
-5. **Modelling an API Contract** — shared request/response types across client and server
-6. **Error Modelling** — typed error responses callers are forced to handle
+1. **Typing API Responses** — nested objects, arrays, optional vs nullable fields ✅
+2. **A Generic API Client** — one typed `fetch` wrapper for a whole application ✅
+3. **Pagination & Response Envelopes** — generic wrappers for paged/wrapped payloads ✅
+4. **unknown at the Boundary** — treat every response as untrusted, then narrow ✅
+5. **Modelling an API Contract** — shared request/response types across client and server ✅
+6. **Error Modelling** — typed error responses callers are forced to handle ✅
 
 ## Level 5 — TypeScript Configuration · *Phase 9* · 3 topics
 

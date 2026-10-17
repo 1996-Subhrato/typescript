@@ -9,16 +9,15 @@
 
 ## Current Phase
 
-**Phase 7 — Next.js + TypeScript** &nbsp;·&nbsp; Status: ✅ **Complete**
+**Phase 8 — Real-World API Typing** &nbsp;·&nbsp; Status: ✅ **Complete**
 
 ## Current Topic
 
-None in progress. Levels 1-3, React, Node/Express and Next.js are fully written.
+None in progress. Everything except Config + Professional (Phase 9) and the Phase 10 review is written.
 
 ## Current Status
 
-The user asked for Phases 4, 5, 6 and 7 in one request. All four are complete, verified and committed
-(one commit each). Awaiting user go-ahead to begin **Phase 8 — Real-World API Typing**.
+Phase 8 is complete, verified and committed. Awaiting user go-ahead to begin **Phase 9 — Config + Professional**.
 Default behaviour: **one phase per request, then stop**, unless the user explicitly asks for more.
 
 ---
@@ -177,51 +176,83 @@ otherwise; a probe corrected it before publishing.
 
 **Lint-checked** (react-hooks rules) like Phase 5: no findings; one odd `export default [...]` in an error demo replaced.
 
+### Phase 8 — Real-World API Typing ✅
+
+Six topics written: `typing-api-responses`, `generic-api-client`, `pagination-and-envelopes`, `unknown-at-the-boundary`,
+`api-contract-modelling`, `api-error-modelling`. Running domain: an e-commerce API (users, products, orders).
+
+Covers: wire type vs domain type and the mapper between them; optional (`?`) vs nullable (`| null`) vs both; unions in
+payloads; values that may grow; why a generic that appears only in a return type is a claim (`getJson<T>`), a `request<T>`
+that takes a `parse` function, a Zod-driven `createApiClient` whose response type is derived from the schema; envelopes,
+offset vs cursor pagination, opaque branded cursors, `mapPage`, `ItemOf`, an `AsyncGenerator` page iterator, a
+`cursorPageSchema` factory; the "`unknown` until checked" rule and four narrowing techniques with a comparison, `z.input`
+vs `z.output`, lenient vs strict parsing; a typed contract (`keyof`, indexed access, template-literal path params, a
+variadic-argument `call`, a server `Handlers` mapped type, schema-first contracts); an `ApiError` discriminated union,
+parsing error bodies from `unknown`, exhaustive `messageFor` / `isRetryable`, `Extract`, typed field errors,
+`ApiRequestError`, and a server-side `toErrorResponse`.
+
+**Promises kept:** `generics-basics` ("returns to" the assertion problem), `type-assertions` and `result-types` (runtime
+validation), `react-async-data` (`parse`), `database-models` (`Serialized<T>` -> wire/domain mapping), `nextjs-route-handlers`
+(shared contract), `result-types` (error modelling).
+
+**Verified beyond the compile gate:** 9 contract-derived types asserted exactly with an `Equal` probe; 3 pagination/schema
+types asserted; and EXECUTED for real — `withQuery` output, the `iterateAll` generator over fake pages, Zod defaults / date
+transform / key stripping / `.strict()` rejection, and the exact message `"email: Invalid email address"`.
+
+**Integrity fixes during review:** an `as Record<string, string[]>` inside the error-body parser (in a topic arguing against
+assertions) was replaced with a real `isFieldErrors` guard; the covariance sentence in pagination was corrected after a probe
+showed mutable arrays are also assignable (unsoundly).
+
 ---
 
 ## Pending Phases
 
 | Phase | Name | Topics | Notes |
 | ----- | ---- | ------ | ----- |
-| 8 | Real-World API Typing | 6 | |
 | 9 | Config + Professional | 10 | Config (3) + Professional (7) |
 | 10 | Review, Exercises & Capstone | — | Exercise pages, search polish, final pass |
 
 Full topic list: [`ROADMAP.md`](./ROADMAP.md). Machine-readable version: `src/lib/registry.ts`.
 
-**Content progress: 48 / 64 topics published** (Level 1: 11/11 · Level 2: 9/9 · Level 3: 10/10 · React: 7/7 · Node/Express: 6/6 · Next.js: 5/5 · rest 0).
+**Content progress: 54 / 64 topics published** (Levels 1-3: 30/30 · React 7/7 · Node/Express 6/6 · Next.js 5/5 · API typing 6/6 · Config 0/3 · Professional 0/7).
 
 ---
 
 ## Next Topic
 
-**Phase 8 — Real-World API Typing.** Six topics, in registry order:
+**Phase 9 — Config + Professional.** Ten topics (Level 5: 3, Level 6: 7), in registry order. **Split into 9a (config) and 9b (professional)
+if it runs long** — they are independent, and 9a needs tooling work first.
 
-1. `typing-api-responses` — nested objects, arrays, optional vs nullable fields, unions in payloads, snake_case wire vs camelCase domain; builds on `database-models` (`Serialized<T>`)
-2. `generic-api-client` — one typed `request<T>` wrapper: base URL, headers, JSON, error mapping, returning `Result`; completes the promise made in `generics-basics`
-3. `pagination-and-envelopes` — `Paginated<T>`, offset vs cursor pagination, `ApiEnvelope<T>`, generic wrappers
-4. `unknown-at-the-boundary` — treat every response as `unknown`, then narrow with guards / schemas; completes the promises made in `type-assertions` and `react-async-data`
-5. `api-contract-modelling` — one typed route map shared by client and server (`typeof`, `keyof`, indexed access, mapped types)
-6. `api-error-modelling` — typed error responses, a discriminated `ApiError` by `code`, mapping to status codes and UI; completes `result-types`
+**9a — TypeScript Configuration**
+1. `tsconfig-essentials` — `target`, `module`, `moduleResolution` (`bundler` vs `node16`/`nodenext`), `lib`, `jsx`, `include` / `exclude`, `noEmit`; walk through THIS repo's `tsconfig.json`
+2. `strictness-flags` — what `strict` turns on (`noImplicitAny`, `strictNullChecks`, `strictFunctionTypes`, `strictBindCallApply`, `strictPropertyInitialization`, `useUnknownInCatchVariables`, `alwaysStrict`, `noImplicitThis`), plus `noUncheckedIndexedAccess`, `noUnusedLocals` / `noUnusedParameters`, `noImplicitOverride`, `noFallthroughCasesInSwitch`, `verbatimModuleSyntax`, and **`exactOptionalPropertyTypes`** (promised since decision #6 — finally explain why it is off here); adopting strictness incrementally
+3. `paths-and-output` — `baseUrl`, `paths`, `esModuleInterop`, `allowJs` / `checkJs`, `sourceMap`, `declaration`, `isolatedModules`, `skipLibCheck`, `resolveJsonModule`
 
-**Notes:** this level is where Phase 4 (generics, mapped/conditional types, `Result`, branded types) and Phases 5-7 converge — reuse, don't
-re-teach. Zod 4.6.7 is installed and may be executed in probes. There is no real server: examples must type-check, and any fetch is `declare`d.
-Use `{/* check:skip */}` only when unavoidable, with the reason in the prose.
+**9b — Professional TypeScript**
+4. `interface-vs-type` (a decision rule; settle the question `type-aliases-and-interfaces` deferred) · 5. `avoiding-any` · 6. `designing-types` ·
+7. `reading-complex-types` · 8. `compiler-errors` · 9. `migrating-js-to-ts` · 10. `anti-patterns`
+
+**TOOLING TO BUILD FIRST (9a):** the strictness topics need blocks compiled WITH A FLAG ON and then OFF (e.g. `exactOptionalPropertyTypes`,
+`strictNullChecks: false`). The gate currently uses one fixed option set. Add per-block options via leading directive comments, as TypeScript's own
+test harness does (`// @exactOptionalPropertyTypes: true`), grouping blocks by distinct option set into one `tsc` run each; unknown directives must
+fail loudly. Cover it with a mutation test like the others. Verify every config claim by running `tsc` with that exact option, and use
+`tsc --showConfig` / `tsc --help --all` against the installed TypeScript 5.9.3 rather than memory. ```jsonc fences are not compiled — back each
+config claim with a compiled demonstration. Mark any `exactOptionalPropertyTypes` demo clearly: it is OFF in this repo.
+
+**Process per topic:** write `src/content/<slug>.mdx`, `npm run check:content -- <slug>`, publish at the end of the phase, then `typecheck` /
+`lint` / `check:content` / `build` / `check:pages`, update docs (README, ROADMAP, this file), commit.
 
 ### Later phases at a glance
 
 | Phase | Topics |
 | ----- | ------ |
-| 9 Config + Professional | `tsconfig-essentials`, `strictness-flags`, `paths-and-output`, `interface-vs-type`, `avoiding-any`, `designing-types`, `reading-complex-types`, `compiler-errors`, `migrating-js-to-ts`, `anti-patterns` |
-| 10 Review & Capstone | Consolidated exercises, capstone, final pass |
+| 10 Review & Capstone | Consolidated exercises (all Practice sections, graded), a capstone project, search polish, final consistency pass (topic order, forward references, README) |
 
 ### Open forward references
 
-`result-types` → *Error Modelling* (Phase 8) · `type-assertions` → *unknown at the Boundary* (Phase 8) ·
-`generics-basics` → *A Generic API Client* (Phase 8) · `react-async-data` (its `parse`) → *unknown at the Boundary* (Phase 8) ·
-`database-models` (`Serialized<T>`) → *Typing API Responses* (Phase 8) · `nextjs-route-handlers` (shared contract) → *Modelling an API Contract* (Phase 8) ·
-`type-aliases-and-interfaces` → *interface vs type in Practice* (Phase 9) · `nextjs-config` (tsconfig pieces) → *tsconfig Essentials* (Phase 9) ·
-`strictness-flags` must finally explain `exactOptionalPropertyTypes` (decision #6).
+`type-aliases-and-interfaces` → *interface vs type in Practice* · `nextjs-config` (tsconfig pieces) → *tsconfig Essentials* ·
+`strictness-flags` must explain `exactOptionalPropertyTypes` (decision #6) · `database-models` / `typing-api-responses` mention OpenAPI
+generators and tRPC lightly — `migrating-js-to-ts` and `designing-types` may point back.
 
 ---
 
@@ -351,6 +382,17 @@ show an idiomatic solution. Phase 10 should consolidate these into a graded set.
     (AGENTS.md), then test the surprising claims. This caught a wrong claim about `useActionState` inference and a two-errors-in-one-literal
     assumption (TypeScript reports only the first error per assignment).
 
+27. **Generics in return position only are claims.** *(Phase 8)* `getJson<T>(url): Promise<T>` cannot be checked because `T` is unrelated to any
+    argument. The house rule taught in `generic-api-client`: tie `T` to a runtime parser (`parse: (data: unknown) => T`) or derive it from a
+    schema (`z.output<S>`), so the type is inferred and cannot be wrong.
+
+28. **Wire types and domain types are separate, mapped once at the edge.** *(Phase 8)* Wire types mirror the payload (snake_case, ISO-string dates,
+    `null`s); domain types are what the app wants (camelCase, `Date`, `undefined`). Optional (`?`) means the key may be missing; nullable (`| null`)
+    means present but empty; the two are never interchangeable.
+
+29. **Error values over error strings.** *(Phase 8)* One `ApiError` discriminated union carries every failure (network, HTTP, validation, malformed
+    body); handled with exhaustive `switch` + `assertNever`; error bodies are parsed from `unknown` and unknown codes degrade to `unexpected`.
+
 ---
 
 ## Project Architecture
@@ -367,7 +409,7 @@ D:\TypeScript
 │   │       └── [slug]/page.tsx  # Renders one MDX topic + TOC + prev/next
 │   ├── components/              # SiteHeader, Sidebar, MobileNav, Search,
 │   │                            # TableOfContents, PrevNextNav, CodeBlock
-│   ├── content/                 # 48 MDX topics — one file per registry slug
+│   ├── content/                 # 54 MDX topics — one file per registry slug
 │   ├── lib/
 │   │   ├── registry.ts          # Source of truth: levels, topics, order, status
 │   │   ├── docs.ts              # Derived helpers — SAFE for client components
@@ -410,15 +452,13 @@ failing line; use ```` ```js ```` for JavaScript, which is not compiled.
 
 ## Last Development Work
 
-Phase 7 — Next.js + TypeScript (5 topics). This completes the four phases requested together (4, 5, 6, 7).
+Phase 8 — Real-World API Typing (6 topics).
 
-**Verification (all green):** `typecheck` · `lint` · `check:content` → 48 topics · 354 blocks · 6 skipped · 116/116 claimed errors real · 0 problems ·
-`build` → 52 static pages · `check:pages` → all 48 pages OK. React-hooks lint pass on 41 blocks: clean after one cosmetic fix.
+**Verification (all green):** `typecheck` · `lint` · `check:content` -> 54 topics · 394 blocks · 6 skipped · 133/133 claimed errors real · 0 problems ·
+`build` -> 58 static pages · `check:pages` -> all 54 pages OK. No React in this phase, so no hooks-lint pass was needed.
 
-**Corrections made before publishing:** a two-errors-in-one-literal claim (split into two declarations); the muddled `useActionState`
-explanation (replaced after a probe); a loose "Client Component cannot import a Server Component" sentence; an unverified error-message
-string. **Docs consulted:** route handlers, route.md, server/client components, mutating-data, forms, generate-metadata, page.md,
-typedRoutes, environment-variables, data-security, redirect.
+**Probes:** contract/pagination types asserted exactly; Zod behaviour and `iterateAll` / `withQuery` executed. **Corrections before publishing:** an assertion
+inside the error-body parser replaced by a real guard; the covariance sentence made precise.
 
 ---
 
@@ -441,11 +481,11 @@ typedRoutes, environment-variables, data-security, redirect.
 
 ## Next Recommended Action
 
-1. Run the site (`npm run dev`) and read `nextjs-server-client`, `nextjs-server-actions` and `react-async-data` — the three that connect most pieces.
-2. **Attempt Practice sections** from Levels 3-6 and share them; I will review them before showing solutions.
+1. Run the site (`npm run dev`) and read `unknown-at-the-boundary`, `api-contract-modelling` and `api-error-modelling` — the three that tie Levels 3-6 together.
+2. **Attempt the Practice sections** (the `call` / contract ones are the hardest) and share them; I will review before showing solutions.
 3. Run the checks yourself: `npm run typecheck && npm run lint && npm run check:content && npm run build`.
-4. Push when ready: `git push -u origin main` (8 commits since the baseline; nothing has been pushed).
-5. Say **"start Phase 8"** for Real-World API Typing.
+4. Push when ready: `git push -u origin main` (nothing has been pushed; 10 commits since the baseline).
+5. Say **"start Phase 9"** for Config + Professional (I will build the per-block compiler-options tooling first).
 
 ---
 
@@ -464,3 +504,4 @@ typedRoutes, environment-variables, data-security, redirect.
 | 2026-10-17 | 5 | 7 React topics; examples linted against the repo's react-hooks rules and fixed; React 19 typings verified against installed types. |
 | 2026-10-17 | 6 | 6 Node/Express topics; Express 5 typings verified from source; Zod behaviour executed; prose lint made paragraph-aware. |
 | 2026-10-17 | 7 | 5 Next.js topics; bundled Next 16.3.1 docs read first; useActionState inference corrected by probe; React-hooks lint pass. |
+| 2026-10-17 | 8 | 6 API-typing topics; contract + pagination types asserted with Equal probes; Zod, query-builder and async-generator behaviour executed; one assertion replaced by a real guard. |

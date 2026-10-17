@@ -1,0 +1,239 @@
+# A Generic API Client
+
+## What
+
+Every application ends up with a small wrapper around `fetch`: base URL, auth header, JSON
+handling, error mapping. Written generically, it is the one place where API types enter
+your program, which makes it the most important function to get right.
+
+This topic returns to the `getJson<T>` helper from *Generics: The Basics* and fixes what it
+left open.
+
+## The problem with `getJson<T>`
+
+```ts
+type User = { id: number; name: string };
+
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  return (await response.json()) as T;
+}
+
+const user = await getJson<User>("/api/users/1");
+console.log(user.name.toUpperCase()); // compiles; may crash if the server sent something else
+```
+
+Look at where `T` appears: **only in the return type**. Nothing in the arguments mentions
+it, so the compiler cannot connect `T` to anything real. `getJson<User>(...)` is an
+assertion wearing a generic's clothes. Remember the rule: *a type parameter that appears
+only in the return position is a claim, not a check.*
+
+## Tie the type to a runtime parser
+
+Make `T` come from something that actually runs. A `parse` function that takes `unknown`
+and either returns a `T` or throws does the job, and now `T` is inferred from it.
+
+```ts
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+type ApiError =
+  | { kind: "network"; message: string }
+  | { kind: "http"; status: number; body: unknown }
+  | { kind: "invalid-body"; message: string };
+
+export async function request<T>(
+  url: string,
+  parse: (data: unknown) => T,
+  init?: RequestInit,
+): Promise<Result<T, ApiError>> {
+  let response: Response;
+  try {
+    response = await fetch(url, init);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Network error";
+    return { ok: false, error: { kind: "network", message } };
+  }
+
+  const body: unknown = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    return { ok: false, error: { kind: "http", status: response.status, body } };
+  }
+
+  try {
+    return { ok: true, value: parse(body) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid response body";
+    return { ok: false, error: { kind: "invalid-body", message } };
+  }
+}
+```
+
+Three things changed:
+
+1. **`T` is inferred from `parse`.** The call site writes no type argument, and it cannot
+   be wrong.
+2. **`body` is `unknown`.** `response.json()` returns `Promise<any>`; assigning it to an
+   `unknown` variable stops the `any` from spreading.
+3. **Every failure is a value** (`Result`): network down, HTTP error, malformed body. The
+   caller must handle each. The error model is expanded in *Error Modelling*.
+
+## Let a schema do the parsing
+
+A schema library gives you the parser and the type in one declaration
+(*DTOs & Runtime Validation*). The client can accept the schema itself:
+
+```ts
+import { z } from "zod";
+
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+type ApiError =
+  | { kind: "network"; message: string }
+  | { kind: "http"; status: number; body: unknown }
+  | { kind: "invalid-body"; issues: string[] };
+
+type ClientOptions = {
+  baseUrl: string;
+  getToken?: () => string | undefined;
+};
+
+export function createApiClient({ baseUrl, getToken }: ClientOptions) {
+  async function send<S extends z.ZodType>(
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+    path: string,
+    schema: S,
+    body?: unknown,
+  ): Promise<Result<z.output<S>, ApiError>> {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const token = getToken?.();
+    if (token !== undefined) headers["Authorization"] = `Bearer ${token}`;
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (error) {
+      return { ok: false, error: { kind: "network", message: error instanceof Error ? error.message : "Network error" } };
+    }
+
+    const json: unknown = await response.json().catch(() => undefined);
+    if (!response.ok) return { ok: false, error: { kind: "http", status: response.status, body: json } };
+
+    const parsed = schema.safeParse(json);
+    if (!parsed.success) {
+      return { ok: false, error: { kind: "invalid-body", issues: parsed.error.issues.map((issue) => issue.message) } };
+    }
+    return { ok: true, value: parsed.data };
+  }
+
+  return {
+    get: <S extends z.ZodType>(path: string, schema: S) => send("GET", path, schema),
+    post: <S extends z.ZodType>(path: string, body: unknown, schema: S) => send("POST", path, schema, body),
+    delete: <S extends z.ZodType>(path: string, schema: S) => send("DELETE", path, schema),
+  };
+}
+```
+
+Now the response type is *derived*, not written:
+
+```ts
+import { z } from "zod";
+
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+declare const client: {
+  get<S extends z.ZodType>(path: string, schema: S): Promise<Result<z.output<S>, { kind: string }>>;
+};
+
+const UserSchema = z.object({ id: z.string(), name: z.string(), email: z.string().nullable() });
+
+async function loadUser(id: string): Promise<string> {
+  const result = await client.get(`/users/${id}`, UserSchema);
+
+  if (!result.ok) return `Failed: ${result.error.kind}`;
+  return result.value.name.toUpperCase(); // value: { id: string; name: string; email: string | null }
+}
+
+async function forgotSchema(): Promise<void> {
+  await client.get("/users/1"); // Error: Expected 2 arguments, but got 1
+}
+```
+
+There is no way to call `get` without a schema, so there is no way to receive an
+unvalidated `User`. The "forgot to validate" bug is unrepresentable.
+
+## Query parameters
+
+A small helper keeps URLs honest and drops `undefined` values:
+
+```ts
+type QueryValue = string | number | boolean | undefined;
+
+export function withQuery(path: string, query: Record<string, QueryValue> = {}): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) params.set(key, String(value));
+  }
+  const text = params.toString();
+  return text === "" ? path : `${path}?${text}`;
+}
+
+const url = withQuery("/products", { search: "keyboard", page: 2, inStock: true, category: undefined });
+// "/products?search=keyboard&page=2&inStock=true"
+```
+
+## Request bodies
+
+The client above accepts `body: unknown`, so it cannot catch a wrong request. Typing
+requests per endpoint needs a description of each endpoint, which is exactly what
+*Modelling an API Contract* builds. Until then, give each call site a typed body:
+
+```ts
+type CreateUserRequest = { name: string; email: string };
+
+declare function postUser(body: CreateUserRequest): Promise<void>;
+
+postUser({ name: "Ada", email: "ada@example.com" });
+postUser({ name: "Ada" }); // Error: Property 'email' is missing
+```
+
+## From `Result` to UI state
+
+The `AsyncState` from *Async Data in Components* maps directly onto the client's result:
+
+```ts
+type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+type AsyncState<T> =
+  | { status: "loading" }
+  | { status: "error"; error: string }
+  | { status: "success"; data: T };
+
+function toAsyncState<T>(result: Result<T, { kind: string }>): AsyncState<T> {
+  return result.ok
+    ? { status: "success", data: result.value }
+    : { status: "error", error: `Request failed (${result.error.kind})` };
+}
+```
+
+## Common mistakes
+
+- **A generic that appears only in the return type** (`getJson<T>`).
+- **`as T` after `response.json()`.**
+- **Throwing on non-2xx** and forgetting that `fetch` only rejects on network failure; a 404
+  is a *successful* `fetch`.
+- **Not checking `response.ok`** before parsing the body as success.
+- **Hand-building query strings** (`"?a=" + value`) and shipping `undefined` literally.
+- **Passing `signal` nowhere**, so abandoned requests cannot be cancelled.
+
+## Practice
+
+1. Add a `signal?: AbortSignal` option to `send` and pass it to `fetch`.
+2. Add a `put` method, and make `delete` accept a schema for an empty response
+   (`z.undefined()` or `z.null()`).
+3. Handle a `401` by calling an `onUnauthorized` callback from `ClientOptions` exactly once.
