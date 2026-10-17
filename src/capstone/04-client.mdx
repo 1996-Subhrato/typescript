@@ -1,0 +1,250 @@
+# Step 4: Build the typed client
+
+## Goal
+
+A single function, `call`, that is the only way the UI talks to the server. Pass it a route
+name and it tells you exactly what else to pass and what you will get back, and it never throws
+for an expected failure.
+
+## Every way a request can fail
+
+First the error type. A request can fail because the network is down, the server said no, the
+server said something we cannot read, or the body was not what the contract promised. All four
+become one union that callers must handle ([*Error Modelling*](/docs/api-error-modelling)).
+
+```ts title="src/shared/api-error.ts"
+import { ErrorBodySchema } from "../contract/schemas";
+import { assertNever } from "./result";
+
+/** Every way a request can fail, as data the caller must handle. */
+export type ApiError =
+  | { kind: "network"; message: string }
+  | { kind: "validation"; fieldErrors: Record<string, string[]> }
+  | { kind: "not-found" }
+  | { kind: "conflict"; message: string }
+  | { kind: "server"; status: number }
+  | { kind: "invalid-response"; issues: string[] }
+  | { kind: "unexpected"; status: number };
+
+/** The error body is data from outside the program too, so it starts as `unknown`. */
+export function toApiError(status: number, body: unknown): ApiError {
+  const parsed = ErrorBodySchema.safeParse(body);
+  const details = parsed.success ? parsed.data.error : undefined;
+
+  if (status === 404) return { kind: "not-found" };
+  if (status === 409) return { kind: "conflict", message: details?.message ?? "Conflict" };
+  if (status === 422 && details?.fieldErrors !== undefined) {
+    return { kind: "validation", fieldErrors: details.fieldErrors };
+  }
+  if (status >= 500) return { kind: "server", status };
+  return { kind: "unexpected", status };
+}
+
+export function messageFor(error: ApiError): string {
+  switch (error.kind) {
+    case "network":
+      return "You appear to be offline.";
+    case "validation":
+      return "Please fix the highlighted fields.";
+    case "not-found":
+      return "We could not find that order.";
+    case "conflict":
+      return error.message;
+    case "server":
+      return "Something went wrong on our side.";
+    case "invalid-response":
+      return "The server sent something we did not understand.";
+    case "unexpected":
+      return `Unexpected response (${error.status}).`;
+    default:
+      return assertNever(error);
+  }
+}
+```
+
+## The client
+
+```ts title="src/client/api-client.ts"
+import type { z } from "zod";
+import { routes, type InputOf, type ResponseOf, type RouteName } from "../contract/routes";
+import { toApiError, type ApiError } from "../shared/api-error";
+import { err, ok, type Result } from "../shared/result";
+
+type ClientOptions = {
+  baseUrl: string;
+  /** Injected so tests can pass a fake; defaults to the real `fetch`. */
+  fetchImpl?: typeof fetch;
+};
+
+type SendInput = { params: Record<string, string>; body: unknown };
+
+/** Reads the caller's input without trusting its shape: no assertions needed. */
+function readInput(raw: unknown): SendInput {
+  if (typeof raw !== "object" || raw === null) return { params: {}, body: undefined };
+
+  const params: Record<string, string> = {};
+  if ("params" in raw && typeof raw.params === "object" && raw.params !== null) {
+    for (const [key, value] of Object.entries(raw.params)) {
+      if (typeof value === "string") params[key] = value;
+    }
+  }
+  return { params, body: "body" in raw ? raw.body : undefined };
+}
+
+function fillPath(path: string, params: Record<string, string>): string {
+  return path.replace(/:([A-Za-z]+)/g, (_match: string, key: string) => encodeURIComponent(params[key] ?? ""));
+}
+
+export function createClient({ baseUrl, fetchImpl = fetch }: ClientOptions) {
+  /** `S` is the response schema, so the success type is whatever the schema outputs. */
+  async function send<S extends z.ZodType>(
+    route: { method: string; path: string; response: S },
+    input: SendInput,
+  ): Promise<Result<z.output<S>, ApiError>> {
+    let response: Response;
+    try {
+      response = await fetchImpl(`${baseUrl}${fillPath(route.path, input.params)}`, {
+        method: route.method,
+        headers: input.body === undefined ? undefined : { "Content-Type": "application/json" },
+        body: input.body === undefined ? undefined : JSON.stringify(input.body),
+      });
+    } catch (error) {
+      return err({ kind: "network", message: error instanceof Error ? error.message : "Network error" });
+    }
+
+    const json: unknown = await response.json().catch(() => undefined);
+    if (!response.ok) return err(toApiError(response.status, json));
+
+    const parsed = route.response.safeParse(json);
+    if (!parsed.success) {
+      return err({ kind: "invalid-response", issues: parsed.error.issues.map((issue) => issue.message) });
+    }
+    return ok(parsed.data);
+  }
+
+  /**
+   * One sender per route. Writing each entry out lets the compiler check it individually: `send`
+   * infers the right response schema for each route, and the `Senders` type below demands that
+   * every route in the contract has one.
+   */
+  type Senders = {
+    [R in RouteName]: (input: SendInput) => Promise<Result<ResponseOf<R>, ApiError>>;
+  };
+
+  const senders: Senders = {
+    listOrders: (input) => send(routes.listOrders, input),
+    getOrder: (input) => send(routes.getOrder, input),
+    createOrder: (input) => send(routes.createOrder, input),
+    cancelOrder: (input) => send(routes.cancelOrder, input),
+  };
+
+  /**
+   * The route name decides everything: the input you must pass (and whether you pass one at all),
+   * and the type you get back.
+   *
+   * The first branch of the argument type is about error messages, not behaviour. A misspelt name
+   * is not a valid `R`, so TypeScript falls back to `R = RouteName` (the whole union). Without that
+   * branch it would then complain "Expected 2 arguments", blaming the wrong thing; with it, the
+   * only complaint left is the real one: the name is not a route.
+   */
+  function call<R extends RouteName>(
+    name: R,
+    ...args: RouteName extends R
+      ? [input?: unknown]
+      : keyof InputOf<R> extends never
+        ? []
+        : [input: InputOf<R>]
+  ): Promise<Result<ResponseOf<R>, ApiError>> {
+    return senders[name](readInput(args[0]));
+  }
+
+  return { call };
+}
+```
+
+## What to notice
+
+- **`toApiError` takes `unknown`.** An error response is data from outside the program too, so it is
+  validated with `ErrorBodySchema` before any field is read. A body that is not in the expected shape
+  degrades to a generic `ApiError`; it does not crash.
+- **`messageFor` ends in `assertNever`.** Add an error kind and this function stops compiling until it
+  has a message for it, so no failure reaches a user as a blank screen.
+- **`readInput` makes no assertions.** The caller's input arrives as `unknown` inside the implementation,
+  and each piece is checked with `typeof` before it is used. The precise typing is for callers; the
+  inside is honest about what it knows.
+- **`send` is generic over the schema.** `S extends z.ZodType` means the success type is
+  `z.output<S>`, whatever the schema produces. No `as`, and no way to claim a type the schema does not
+  produce ([*A Generic API Client*](/docs/generic-api-client)).
+- **`Senders` is a mapped type.** There is one entry per route, and each is checked separately: `send`
+  infers the right schema for `routes.getOrder` and the right output type falls out. The mapped type
+  also demands that every route has a sender, so the client cannot fall behind the contract.
+- **Why not just `send(routes[name], ...)` inside `call`?** With a generic `name`, TypeScript cannot
+  carry the link between the *name* and the *matching schema* through an indexed lookup. This is the
+  "correlated union" problem. Spelling out the table is the type-safe alternative to the assertion you
+  would otherwise reach for.
+- **The argument type of `call` computes whether you pass anything.** `listOrders` takes nothing,
+  `getOrder` takes `{ params }`, `createOrder` takes `{ body }`.
+- **The first branch of that type is only about error messages.** Read the comment in the file; it is a
+  good example of a type that exists for the sake of the developer reading the error.
+
+## Try breaking it
+
+Each of these goes in a scratch file next to the client, with `const client = createClient({ baseUrl: "" })`.
+
+{/* check:skip */}
+```ts
+client.call("nope");
+```
+
+`Argument of type '"nope"' is not assignable to parameter of type '"listOrders" | "getOrder" | "createOrder" | "cancelOrder"'.`
+That is the message you want. Remove the first branch of the argument type and it becomes `Expected 2 arguments, but got 1`, which blames the wrong thing.
+
+{/* check:skip */}
+```ts
+client.call("getOrder");
+```
+
+`Expected 2 arguments, but got 1.` The route needs `{ params: { id } }`.
+
+{/* check:skip */}
+```ts
+client.call("listOrders", { params: { id: "x" } });
+```
+
+`Expected 1 arguments, but got 2.` This route takes nothing.
+
+{/* check:skip */}
+```ts
+client.call("createOrder", { body: { customer_email: "a@b.co" } });
+```
+
+`Property 'lines' is missing in type '{ customer_email: string; }' but required in type '{ customer_email: string; lines: ...`
+
+{/* check:skip */}
+```ts
+const result = await client.call("listOrders");
+console.log(result.value.items);
+```
+
+`Property 'value' does not exist on type 'Result<{ items: Order[]; next_cursor: string | null; }, ApiError>'.`
+You cannot read the value until you have checked `result.ok`. That is the whole point of `Result`.
+
+And the happy path, which compiles with no errors and gives you a domain `Order`:
+
+{/* check:skip */}
+```ts
+const result = await client.call("getOrder", { params: { id: "ord_1" } });
+const order = result.ok ? result.value : undefined; // Order | undefined
+```
+
+Finally, add a new kind to `ApiError`, for example `{ kind: "timeout" }`. The compiler reports
+`Argument of type '{ kind: "timeout"; }' is not assignable to parameter of type 'never'` inside
+`messageFor`: the exhaustiveness check doing its job.
+
+## Stretch
+
+1. Add `isRetryable(error: ApiError): boolean` with an exhaustive `switch`, and a `retries` option to
+   `createClient` that uses it. Which kinds should retry?
+2. Add an `AbortSignal` to `call`. Where does it belong in the argument type?
+3. `fillPath` replaces `:id` with `params[key] ?? ""`. An empty id produces a wrong URL silently. How
+   would you make a missing parameter impossible, at the type level or at runtime?

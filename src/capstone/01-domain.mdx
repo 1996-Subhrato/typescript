@@ -1,0 +1,149 @@
+# Step 1: Model the domain
+
+## Goal
+
+Describe orders in the language of the business, before any HTTP, JSON or React exists. If this
+layer is right, everything above it is easier; if it is sloppy, every later layer inherits the
+sloppiness.
+
+## First, a way to return failure
+
+Two tiny files with no dependencies. `Result` is the type every layer will use to report
+something that can go wrong, and `assertNever` is the exhaustiveness helper.
+
+```ts title="src/shared/result.ts"
+/** A value that is either a success or a failure, so callers must handle both. */
+export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+export const ok = <T>(value: T): Result<T, never> => ({ ok: true, value });
+
+export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
+
+export function mapResult<T, U, E>(result: Result<T, E>, fn: (value: T) => U): Result<U, E> {
+  return result.ok ? ok(fn(result.value)) : result;
+}
+
+/** Put in the `default` branch of a switch: a forgotten case becomes a compile error. */
+export function assertNever(value: never): never {
+  throw new Error(`Unhandled case: ${JSON.stringify(value)}`);
+}
+```
+
+`mapResult` transforms the success side and passes a failure through untouched. Notice that
+`ok(...)` is a `Result<T, never>` and `err(...)` is a `Result<never, E>`: `never` on the unused
+side is what lets either one be assigned to a `Result<T, E>` of any shape.
+
+## The domain types
+
+```ts title="src/domain/order.ts"
+declare const brand: unique symbol;
+type Brand<T, Name extends string> = T & { readonly [brand]: Name };
+
+/** Ids and money are different things even though both are primitives underneath. */
+export type OrderId = Brand<string, "OrderId">;
+export type Cents = Brand<number, "Cents">;
+
+export const ORDER_STATUSES = ["pending", "paid", "shipped", "cancelled"] as const;
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+export type OrderLine = {
+  sku: string;
+  name: string;
+  unitPrice: Cents;
+  quantity: number;
+};
+
+export type Order = {
+  id: OrderId;
+  status: OrderStatus;
+  customerEmail: string;
+  lines: readonly OrderLine[];
+  couponCode: string | undefined;
+  placedAt: Date;
+  shippedAt: Date | null;
+};
+
+/** What a customer sends to place an order: no id, no status, no timestamps. */
+export type NewOrder = {
+  customerEmail: string;
+  lines: readonly { sku: string; quantity: number }[];
+  couponCode: string | undefined;
+};
+
+// The only places a brand is applied. Everywhere else, the compiler enforces it.
+export function orderId(value: string): OrderId {
+  return value as OrderId;
+}
+
+export function cents(value: number): Cents {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new RangeError(`Not a valid amount of cents: ${value}`);
+  }
+  return value as Cents;
+}
+
+export function orderTotal(order: Pick<Order, "lines">): Cents {
+  return cents(order.lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0));
+}
+
+export function formatCents(amount: Cents): string {
+  return `$${(amount / 100).toFixed(2)}`;
+}
+
+export function canCancel(status: OrderStatus): boolean {
+  return status === "pending" || status === "paid";
+}
+```
+
+## What to notice
+
+- **`ORDER_STATUSES` is a value, and `OrderStatus` is derived from it.** One list, not two
+  ([*Enums & as const*](/docs/enums-and-as-const)). Later, the wire schema reuses the same list, so adding a status here
+  reaches the schema for free.
+- **Two brands, two constructors.** `OrderId` and `Cents` are not interchangeable with `string`
+  and `number` ([*Branded Types*](/docs/branded-types)). The only two type assertions in the whole project are
+  `value as OrderId` and `value as Cents`, each inside the function that validates or
+  documents the value. Everything else is checked by the compiler.
+- **`undefined` and `null` mean different things on purpose.** `couponCode` is
+  `string | undefined`: the customer may simply not have one. `shippedAt` is `Date | null`:
+  the field always exists, and `null` means *not shipped yet*.
+- **`readonly lines`** means nothing downstream can push into an order's lines by accident.
+- **`NewOrder` is a separate type from `Order`.** What a customer submits has no id, no status
+  and no timestamps, because those are the server's to decide.
+- **`canCancel` and `orderTotal` live with the types.** Rules about orders belong next to the
+  definition of an order, not scattered through components.
+
+## Try breaking it
+
+Add each line to a scratch file in `src/` and read what the compiler says.
+
+{/* check:skip */}
+```ts
+import type { Cents } from "./domain/order";
+
+export const price: Cents = 4900;
+```
+
+`Type 'number' is not assignable to type 'Cents'.` A plain number is not money until it has
+been through `cents(...)`.
+
+{/* check:skip */}
+```ts
+import type { Order } from "./domain/order";
+
+export function isPaid(order: Order): boolean {
+  return order.status === "payed";
+}
+```
+
+`This comparison appears to be unintentional because the types '"pending" | "paid" | "shipped" | "cancelled"' and '"payed"' have no overlap.`
+A typo in a status is caught where it is written.
+
+## Stretch
+
+1. `canCancel` is a boolean expression, so adding a status does not make the compiler ask
+   whether it can be cancelled. Rewrite it as a `switch` with `assertNever` so that it does.
+2. Add a `"refunded"` status to `ORDER_STATUSES`. What breaks in this step? What will break in
+   the next one, and what will *not*?
+3. `cents` throws on bad input. Would it be better to return `Cents | null`, or a `Result`?
+   Write down the trade-off before you change anything.

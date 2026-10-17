@@ -19,7 +19,7 @@
  *
  * Runs directly under Node's type stripping, so it avoids enums and parameter properties.
  */
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -35,7 +35,20 @@ interface Level {
 
 const ROOT = process.cwd();
 const CONTENT_DIR = path.join(ROOT, "src", "content");
+const CAPSTONE_DIR = path.join(ROOT, "src", "capstone");
 const FIX = process.argv.includes("--fix");
+
+/** Every MDX page that may cite topics: the topics themselves, then the capstone pages. */
+function pages(): { slug: string; filePath: string }[] {
+  const fromDir = (dir: string, prefix: string): { slug: string; filePath: string }[] =>
+    existsSync(dir)
+      ? readdirSync(dir)
+          .filter((name) => name.endsWith(".mdx"))
+          .sort()
+          .map((name) => ({ slug: `${prefix}${name.slice(0, -".mdx".length)}`, filePath: path.join(dir, name) }))
+      : [];
+  return [...fromDir(CONTENT_DIR, ""), ...fromDir(CAPSTONE_DIR, "capstone/")];
+}
 
 function isTopic(value: unknown): value is Topic {
   return (
@@ -143,9 +156,7 @@ let linkedAlready = 0;
 let fixed = 0;
 const warnings: string[] = [];
 
-for (const file of readdirSync(CONTENT_DIR).filter((name) => name.endsWith(".mdx")).sort()) {
-  const slug = file.slice(0, -".mdx".length);
-  const filePath = path.join(CONTENT_DIR, file);
+for (const { slug, filePath } of pages()) {
   const source = readFileSync(filePath, "utf8");
   const masked = maskNonProse(source);
   const lineAt = (offset: number): number => source.slice(0, offset).split("\n").length;

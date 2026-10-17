@@ -1,0 +1,81 @@
+# Step 7: Tighten and review
+
+## Goal
+
+No new files. This step is about stepping back: what you have, what each guarantee costs, and what the
+project would need to become a real system.
+
+## The configuration behind it
+
+These are the compiler settings the project was checked under. The three that matter most for the
+behaviour shown on these pages are the first three.
+
+```jsonc
+{
+  "compilerOptions": {
+    "strict": true,                       // the nine checks that make types trustworthy
+    "noUncheckedIndexedAccess": true,     // array/record lookups include undefined
+    "verbatimModuleSyntax": true,         // type-only imports must say so
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "module": "esnext",
+    "noEmit": true
+  }
+}
+```
+
+([*tsconfig Essentials*](/docs/tsconfig-essentials) and [*Strictness Flags*](/docs/strictness-flags) explain each of these, and the one deliberate omission:
+`exactOptionalPropertyTypes`.)
+
+## A review checklist
+
+Go through the project with these questions. Each has a concrete place to look.
+
+1. **Where do untrusted values enter, and is each one `unknown` until checked?** Response bodies
+   (`api-client.ts`), error bodies (`api-error.ts`), request bodies (`route.ts`).
+2. **Is there any `any`?** Search for `any` and for ` as `. You should find no `any`, and apart from `as const` exactly two assertions, in `orderId` and `cents`.
+3. **What happens when a new case appears?** New status, new route, new error kind, new action: find
+   where the compiler stops you in each case. Are there any places it would *not*?
+4. **Could two identifiers be mixed up?** `OrderId` and `Cents` cannot. What about `sku` and a customer
+   email, both plain `string`s?
+5. **Do any expected failures throw?** None do. Only `cents` and `assertNever` throw, and both signal a programmer error, not something a user can cause.
+6. **Which types are written by hand that could be derived?** Compare `OrderWire`, `ResponseOf` and
+   `Handlers` with the alternative of writing them out.
+7. **Does anything outside the server know about HTTP status codes?** It should not, except `toApiError`
+   on the client, which is the one place it needs to.
+
+## What would change in a real system
+
+| Today | In production |
+| ----- | ------------- |
+| An in-memory `Map` | A database behind a repository interface; row types separate from domain types ([*Database Models*](/docs/database-models)) |
+| `next_cursor: null` always | Real cursor pagination ([*Pagination & Response Envelopes*](/docs/pagination-and-envelopes)) |
+| No authentication | A user on the request, and authorisation inside each handler ([*Middleware & Error Handling*](/docs/express-middleware)) |
+| One `instance.ts` | Dependency injection, so tests get fresh state |
+| Trusting the client's `baseUrl` | Environment-driven, validated at boot ([*Environment & Config*](/docs/env-and-config)) |
+| No retry, no timeout | `isRetryable` and an `AbortSignal` (see the stretch tasks in Step 4) |
+
+## What you can now do
+
+Measured against the goals this course started with:
+
+- Read TypeScript code confidently, including types derived with `keyof`, conditionals and mapped types.
+- Write TypeScript without constantly looking things up: you have just written about 650 lines.
+- Understand compiler errors: you have read around twenty of them in "Try breaking it" sections.
+- Type React, a Node-style backend, and a Next.js app, and keep all three on one contract.
+- Work with generics and utility types where they earn their keep, and stop where they would not.
+- Design types that make illegal states unrepresentable, and recognise when a type is too clever
+  ([*Designing Reusable Types*](/docs/designing-types), [*Reading Complex Types*](/docs/reading-complex-types)).
+- Debug and improve existing code, and migrate a JavaScript codebase step by step
+  ([*Migrating JavaScript to TypeScript*](/docs/migrating-js-to-ts)).
+
+## Where to go next
+
+- Do the stretch tasks, then show them to someone, or bring them for review.
+- Go through the [exercises](/exercises), the rest of the Practice sections from the course.
+- Take a real project, run the checklist above against it, and fix one thing on it this week.
+- Re-read [*Anti-Patterns*](/docs/anti-patterns) with this project open, and find which it avoids and how.

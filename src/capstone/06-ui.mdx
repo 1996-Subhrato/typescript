@@ -1,0 +1,179 @@
+# Step 6: Drive the UI with a state machine
+
+## Goal
+
+A React component whose state can only be something that makes sense, driven by the typed client from
+Step 4. No loading flag next to an error next to some data: one value that is exactly one of three
+states.
+
+## The state and the reducer
+
+```ts title="src/ui/orders-state.ts"
+import type { Order } from "../domain/order";
+import type { ApiError } from "../shared/api-error";
+import { assertNever } from "../shared/result";
+
+/** Each state carries exactly the data that makes sense for it, and nothing else. */
+export type OrdersState =
+  | { status: "loading" }
+  | { status: "error"; error: ApiError }
+  | { status: "ready"; orders: readonly Order[]; cancelling: ReadonlySet<string>; failure: ApiError | undefined };
+
+export type OrdersAction =
+  | { type: "load-succeeded"; orders: readonly Order[] }
+  | { type: "load-failed"; error: ApiError }
+  | { type: "cancel-started"; id: string }
+  | { type: "cancel-finished"; order: Order }
+  | { type: "cancel-failed"; id: string; error: ApiError };
+
+export const initialOrdersState: OrdersState = { status: "loading" };
+
+export function ordersReducer(state: OrdersState, action: OrdersAction): OrdersState {
+  switch (action.type) {
+    case "load-succeeded":
+      return { status: "ready", orders: action.orders, cancelling: new Set(), failure: undefined };
+
+    case "load-failed":
+      return { status: "error", error: action.error };
+
+    case "cancel-started":
+      if (state.status !== "ready") return state;
+      return { ...state, cancelling: new Set(state.cancelling).add(action.id), failure: undefined };
+
+    case "cancel-finished": {
+      if (state.status !== "ready") return state;
+      const cancelling = new Set(state.cancelling);
+      cancelling.delete(action.order.id);
+      const orders = state.orders.map((order) => (order.id === action.order.id ? action.order : order));
+      return { ...state, orders, cancelling };
+    }
+
+    case "cancel-failed": {
+      if (state.status !== "ready") return state;
+      const cancelling = new Set(state.cancelling);
+      cancelling.delete(action.id);
+      return { ...state, cancelling, failure: action.error };
+    }
+
+    default:
+      return assertNever(action);
+  }
+}
+```
+
+## The component
+
+```tsx title="src/ui/OrdersDesk.tsx"
+import { useEffect, useReducer } from "react";
+import type { createClient } from "../client/api-client";
+import { canCancel, formatCents, orderTotal } from "../domain/order";
+import { messageFor } from "../shared/api-error";
+import { initialOrdersState, ordersReducer } from "./orders-state";
+
+/** The component depends on the client's TYPE only, so a test can pass a fake. */
+type OrdersClient = ReturnType<typeof createClient>;
+
+export function OrdersDesk({ client }: { client: OrdersClient }) {
+  const [state, dispatch] = useReducer(ordersReducer, initialOrdersState);
+
+  useEffect(() => {
+    let stale = false;
+    void client.call("listOrders").then((result) => {
+      if (stale) return;
+      dispatch(
+        result.ok
+          ? { type: "load-succeeded", orders: result.value.items }
+          : { type: "load-failed", error: result.error },
+      );
+    });
+    return () => {
+      stale = true;
+    };
+  }, [client]);
+
+  async function cancel(id: string): Promise<void> {
+    dispatch({ type: "cancel-started", id });
+    const result = await client.call("cancelOrder", { params: { id } });
+    dispatch(
+      result.ok
+        ? { type: "cancel-finished", order: result.value }
+        : { type: "cancel-failed", id, error: result.error },
+    );
+  }
+
+  switch (state.status) {
+    case "loading":
+      return <p>Loading orders...</p>;
+
+    case "error":
+      return <p role="alert">{messageFor(state.error)}</p>;
+
+    case "ready":
+      return (
+        <section>
+          {state.failure !== undefined && <p role="alert">{messageFor(state.failure)}</p>}
+          <ul>
+            {state.orders.map((order) => (
+              <li key={order.id}>
+                {order.id} &middot; {order.status} &middot; {formatCents(orderTotal(order))}
+                {canCancel(order.status) && (
+                  <button type="button" disabled={state.cancelling.has(order.id)} onClick={() => void cancel(order.id)}>
+                    Cancel
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      );
+  }
+}
+```
+
+## What to notice
+
+- **The state is a discriminated union.** `loading`, `error` and `ready` each carry only their own data. The
+  component cannot read `orders` while loading, because in that state there is no such property
+  ([*Async Data in Components*](/docs/react-async-data)).
+- **Actions are a union too, and the reducer is exhaustive.** `assertNever` in the `default` branch means a
+  new action cannot be added without handling it ([*useState & useReducer*](/docs/react-state)).
+- **Stale actions are ignored, not trusted.** `cancel-started` on a state that is not `ready` returns the
+  same state. A response arriving late cannot corrupt a screen that has moved on.
+- **State is never mutated.** Each case builds a new `Set` or array. `readonly Order[]` makes pushing into
+  the old one a compile error, not a bug.
+- **`OrdersClient` is `ReturnType<typeof createClient>`.** The component depends on the client's *type* and
+  receives the client as a prop, so a test can pass a fake without mocking modules ([*Structural Typing &
+  Compatibility*](/docs/structural-typing)).
+- **The effect never calls `dispatch` synchronously.** The initial state is already `loading`, and
+  `dispatch` runs inside the promise callback. That keeps it clear of the lint rule against setting
+  state synchronously in an effect, which this repository enforces.
+- **The `stale` flag guards the effect.** If the component unmounts or the client changes before the
+  response arrives, the late result is dropped.
+- **`result.ok ? ... : ...` narrows both sides.** In the success branch `result.value.items` is
+  `Order[]`; in the failure branch `result.error` is an `ApiError` ([*Narrowing*](/docs/narrowing)). There is no cast
+  anywhere in this file.
+- **`switch` over `state.status` is exhaustive without a `default`.** TypeScript knows all three cases are
+  covered, so the function always returns.
+
+## Try breaking it
+
+Add a new action to the union, for example `{ type: "reload" }`. The reducer's `default` branch reports
+`Argument of type '{ type: "reload"; }' is not assignable to parameter of type 'never'`.
+
+In the `cancel-finished` case, add `state.orders.push(action.order);`. The compiler reports
+`Property 'push' does not exist on type 'readonly Order[]'`.
+
+In `OrdersDesk`, change `client.call("cancelOrder", { params: { id } })` to
+`client.call("cancelOrder")`. You get `Expected 2 arguments, but got 1.` With the wrong key,
+`{ params: { orderId: id } }`, the error is `Object literal may only specify known properties, and
+'orderId' does not exist in type 'Record<"id", string>'`. The UI cannot call a route
+incorrectly, because the route's own definition says how.
+
+## Stretch
+
+1. Make cancelling **optimistic**: show the order as cancelled immediately and roll back on failure. What
+   new action or field does the state need, and what does the compiler force you to update?
+2. Add a "Create order" form using the `createOrder` route. Type the form state, decide which errors show
+   next to fields (use `fieldErrors` from a `validation` error), and decide where `FormData` is parsed.
+3. Write a test for `ordersReducer` that walks the whole state machine. It is a pure function. How little
+   code does it take?

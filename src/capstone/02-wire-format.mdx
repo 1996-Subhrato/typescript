@@ -1,0 +1,140 @@
+# Step 2: Describe the wire format
+
+## Goal
+
+Say exactly what an order looks like **as JSON**, check data against that description, and
+convert it into the domain types from Step 1, all from a single declaration.
+
+The wire format and the domain model are deliberately different: the wire uses `snake_case`,
+dates as strings, and `null`; the domain uses `camelCase`, real `Date` objects, and branded ids
+([*Typing API Responses*](/docs/typing-api-responses)). The schemas are where one becomes the other.
+
+## The schemas
+
+```ts title="src/contract/schemas.ts"
+import { z } from "zod";
+import { cents, orderId, ORDER_STATUSES, type Order } from "../domain/order";
+
+/** What an order looks like on the wire: snake_case, ISO-string dates, nulls. */
+const OrderWireSchema = z.object({
+  id: z.string(),
+  status: z.enum(ORDER_STATUSES),
+  customer_email: z.email(),
+  lines: z.array(
+    z.object({
+      sku: z.string(),
+      name: z.string(),
+      unit_price_cents: z.number().int().nonnegative(),
+      quantity: z.number().int().positive(),
+    }),
+  ),
+  coupon_code: z.string().optional(),
+  placed_at: z.iso.datetime(),
+  shipped_at: z.iso.datetime().nullable(),
+});
+
+/**
+ * Parsing and converting happen in one step: the OUTPUT of this schema is the domain `Order`
+ * (camelCase, real `Date`s, branded ids), the INPUT is the wire shape.
+ */
+export const OrderSchema = OrderWireSchema.transform(
+  (wire): Order => ({
+    id: orderId(wire.id),
+    status: wire.status,
+    customerEmail: wire.customer_email,
+    lines: wire.lines.map((line) => ({
+      sku: line.sku,
+      name: line.name,
+      unitPrice: cents(line.unit_price_cents),
+      quantity: line.quantity,
+    })),
+    couponCode: wire.coupon_code,
+    placedAt: new Date(wire.placed_at),
+    shippedAt: wire.shipped_at === null ? null : new Date(wire.shipped_at),
+  }),
+);
+
+export type OrderWire = z.input<typeof OrderSchema>;
+
+/** The server's direction: domain `Order` back to the wire shape. */
+export function toWire(order: Order): OrderWire {
+  return {
+    id: order.id,
+    status: order.status,
+    customer_email: order.customerEmail,
+    lines: order.lines.map((line) => ({
+      sku: line.sku,
+      name: line.name,
+      unit_price_cents: line.unitPrice,
+      quantity: line.quantity,
+    })),
+    coupon_code: order.couponCode,
+    placed_at: order.placedAt.toISOString(),
+    shipped_at: order.shippedAt === null ? null : order.shippedAt.toISOString(),
+  };
+}
+
+export const OrderListSchema = z.object({
+  items: z.array(OrderSchema),
+  next_cursor: z.string().nullable(),
+});
+
+export const CreateOrderBodySchema = z.object({
+  customer_email: z.email(),
+  lines: z.array(z.object({ sku: z.string().min(1), quantity: z.number().int().positive() })).min(1),
+  coupon_code: z.string().optional(),
+});
+
+/** The shape of every error response the server sends. */
+export const ErrorBodySchema = z.object({
+  error: z.object({
+    code: z.string(),
+    message: z.string(),
+    fieldErrors: z.record(z.string(), z.array(z.string())).optional(),
+  }),
+});
+```
+
+## What to notice
+
+- **A schema is a parser and a type.** `OrderWireSchema` checks a value at runtime, and the type
+  of what it accepts and produces is inferred from it. There is no hand-written type to keep in
+  sync ([*DTOs & Runtime Validation*](/docs/dtos-and-validation)).
+- **`.transform` makes the output a different type from the input.** The schema *accepts* the
+  wire shape and *produces* a domain `Order`. That is why the file defines
+  `type OrderWire = z.input<typeof OrderSchema>`: `z.input` is what goes in, `z.output` is what
+  comes out.
+- **The conversion happens exactly once, at the boundary.** Code that receives an `Order` from
+  the client never sees `customer_email` or an ISO string. The branded `orderId(...)` and
+  `cents(...)` constructors are called here, so branded values only ever come from validated
+  data.
+- **`toWire` is the server's direction.** It is the inverse of the transform, written by hand.
+  If the two ever disagree about a field, the compiler tells you: the return type of `toWire` is
+  `OrderWire`, which the schema defines.
+- **`z.enum(ORDER_STATUSES)` reuses the list from Step 1.** The wire format cannot accept a status
+  the domain does not know.
+- **Optional versus nullable is respected.** `coupon_code` may be missing (`.optional()`);
+  `shipped_at` is always present but may be `null` (`.nullable()`).
+- **`ErrorBodySchema` describes failures too.** Error responses are data from outside the
+  program, so they get a schema like everything else.
+
+## Try breaking it
+
+In the `OrderSchema` transform, delete the line `couponCode: wire.coupon_code,`.
+
+`Property 'couponCode' is missing in type '{ id: OrderId; status: ...' but required in type 'Order'.`
+The domain type demands every field, so the conversion cannot silently drop one.
+
+Now rename `customer_email` to `email` in `OrderWireSchema` only. You get **two** errors, both in
+this file: the transform reads `wire.customer_email`, which no longer exists, and `toWire` writes a
+`customer_email` property the wire type no longer has. Change the name in one place and the compiler
+finds every other place.
+
+## Stretch
+
+1. Add a nullable `notes` field to the order, from the schema through to the domain type and back
+   through `toWire`. List every file you had to touch. (Fewer than you expect?)
+2. Make `CreateOrderBodySchema` **strict**, so a request with an unknown field is rejected. Why would
+   you want that for requests but not for responses?
+3. The transform trusts `new Date(wire.placed_at)`. The schema already checked the string is an ISO
+   datetime. What would go wrong if it had not?

@@ -1,0 +1,292 @@
+# Step 5: Implement the server
+
+## Goal
+
+Business rules that know nothing about HTTP, a single place that decides what each business failure
+means over HTTP, and handlers that the compiler checks against the contract. Then two thin Next.js
+route files that connect it to the web.
+
+## The service: business rules
+
+```ts title="src/server/orders-service.ts"
+import {
+  canCancel,
+  orderId,
+  type Cents,
+  type NewOrder,
+  type Order,
+  type OrderId,
+  type OrderLine,
+  type OrderStatus,
+} from "../domain/order";
+import { err, ok, type Result } from "../shared/result";
+
+export type CatalogItem = { name: string; unitPrice: Cents };
+
+/** Business failures, in business terms. HTTP status codes are NOT mentioned here. */
+export type DomainError =
+  | { kind: "not-found"; id: string }
+  | { kind: "unknown-sku"; sku: string }
+  | { kind: "cannot-cancel"; status: OrderStatus };
+
+export function createOrdersService(catalog: ReadonlyMap<string, CatalogItem>) {
+  const orders = new Map<OrderId, Order>();
+  let sequence = 0;
+
+  function list(): Order[] {
+    return [...orders.values()];
+  }
+
+  function get(id: string): Result<Order, DomainError> {
+    const order = orders.get(orderId(id));
+    return order ? ok(order) : err({ kind: "not-found", id });
+  }
+
+  function create(input: NewOrder): Result<Order, DomainError> {
+    const lines: OrderLine[] = [];
+    for (const requested of input.lines) {
+      const item = catalog.get(requested.sku);
+      if (!item) return err({ kind: "unknown-sku", sku: requested.sku });
+      lines.push({ sku: requested.sku, name: item.name, unitPrice: item.unitPrice, quantity: requested.quantity });
+    }
+
+    sequence += 1;
+    const order: Order = {
+      id: orderId(`ord_${sequence}`),
+      status: "pending",
+      customerEmail: input.customerEmail,
+      lines,
+      couponCode: input.couponCode,
+      placedAt: new Date(),
+      shippedAt: null,
+    };
+    orders.set(order.id, order);
+    return ok(order);
+  }
+
+  function cancel(id: string): Result<Order, DomainError> {
+    const found = get(id);
+    if (!found.ok) return found;
+    if (!canCancel(found.value.status)) return err({ kind: "cannot-cancel", status: found.value.status });
+
+    const cancelled: Order = { ...found.value, status: "cancelled" };
+    orders.set(cancelled.id, cancelled);
+    return ok(cancelled);
+  }
+
+  return { list, get, create, cancel };
+}
+
+/** Derived from the function, so the type can never drift from the implementation. */
+export type OrdersService = ReturnType<typeof createOrdersService>;
+```
+
+## Business failures become HTTP responses, in one place
+
+```ts title="src/server/http.ts"
+import { assertNever } from "../shared/result";
+import type { DomainError } from "./orders-service";
+
+export type ErrorResponse = {
+  status: number;
+  body: { error: { code: string; message: string; fieldErrors?: Record<string, string[]> } };
+};
+
+/**
+ * The one place that decides what each business failure means over HTTP.
+ * Add a `DomainError` kind and this stops compiling until you decide.
+ * The messages are fixed text: never copy an exception message into a response.
+ */
+export function toErrorResponse(error: DomainError): ErrorResponse {
+  switch (error.kind) {
+    case "not-found":
+      return { status: 404, body: { error: { code: "NOT_FOUND", message: "Order not found" } } };
+    case "unknown-sku":
+      return {
+        status: 422,
+        body: {
+          error: {
+            code: "VALIDATION_FAILED",
+            message: "Unknown product",
+            fieldErrors: { lines: [`Unknown sku: ${error.sku}`] },
+          },
+        },
+      };
+    case "cannot-cancel":
+      return {
+        status: 409,
+        body: { error: { code: "CANNOT_CANCEL", message: `A ${error.status} order cannot be cancelled` } },
+      };
+    default:
+      return assertNever(error);
+  }
+}
+
+/** Builds the 422 response for a request body that failed schema validation. */
+export function validationFailure(issues: readonly { path: readonly PropertyKey[]; message: string }[]): ErrorResponse {
+  const fieldErrors: Record<string, string[]> = {};
+  for (const issue of issues) {
+    const field = issue.path.map(String).join(".") || "body";
+    (fieldErrors[field] ??= []).push(issue.message);
+  }
+  return {
+    status: 422,
+    body: { error: { code: "VALIDATION_FAILED", message: "Invalid request", fieldErrors } },
+  };
+}
+```
+
+## One handler per route, checked against the contract
+
+```ts title="src/server/handlers.ts"
+import type { InputOf, RouteName, WireResponseOf } from "../contract/routes";
+import { toWire } from "../contract/schemas";
+import { mapResult, ok, type Result } from "../shared/result";
+import type { DomainError, OrdersService } from "./orders-service";
+
+/**
+ * A mapped type over the route table: one handler per route, each taking exactly that route's
+ * input and returning exactly that route's wire response. Remove or add a route in the contract
+ * and this object stops compiling until the server catches up.
+ */
+export type Handlers = {
+  [R in RouteName]: (input: InputOf<R>) => Promise<Result<WireResponseOf<R>, DomainError>>;
+};
+
+export function createHandlers(service: OrdersService): Handlers {
+  return {
+    listOrders: async () => ok({ items: service.list().map(toWire), next_cursor: null }),
+
+    getOrder: async ({ params }) => mapResult(service.get(params.id), toWire),
+
+    createOrder: async ({ body }) =>
+      mapResult(
+        service.create({ customerEmail: body.customer_email, lines: body.lines, couponCode: body.coupon_code }),
+        toWire,
+      ),
+
+    cancelOrder: async ({ params }) => mapResult(service.cancel(params.id), toWire),
+  };
+}
+```
+
+```ts title="src/server/instance.ts"
+import { cents } from "../domain/order";
+import { createHandlers } from "./handlers";
+import { createOrdersService, type CatalogItem } from "./orders-service";
+
+const catalog: ReadonlyMap<string, CatalogItem> = new Map([
+  ["kb-01", { name: "Keyboard", unitPrice: cents(4900) }],
+  ["ms-02", { name: "Mouse", unitPrice: cents(2500) }],
+]);
+
+/** One service for the whole process, so every request sees the same orders. */
+export const service = createOrdersService(catalog);
+export const handlers = createHandlers(service);
+```
+
+## The Next.js route files
+
+```ts title="src/app/api/orders/route.ts"
+import { NextResponse, type NextRequest } from "next/server";
+import { CreateOrderBodySchema } from "../../../contract/schemas";
+import { toErrorResponse, validationFailure } from "../../../server/http";
+import { handlers } from "../../../server/instance";
+
+export async function GET(): Promise<NextResponse> {
+  const result = await handlers.listOrders({});
+  return result.ok ? NextResponse.json(result.value) : toResponse(result.error);
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  let body: unknown;
+  try {
+    body = await request.json(); // `unknown` until the schema has checked it
+  } catch {
+    return NextResponse.json({ error: { code: "BAD_JSON", message: "Body must be valid JSON" } }, { status: 400 });
+  }
+
+  const parsed = CreateOrderBodySchema.safeParse(body);
+  if (!parsed.success) {
+    const { status, body: errorBody } = validationFailure(parsed.error.issues);
+    return NextResponse.json(errorBody, { status });
+  }
+
+  const result = await handlers.createOrder({ body: parsed.data });
+  return result.ok ? NextResponse.json(result.value, { status: 201 }) : toResponse(result.error);
+}
+
+function toResponse(error: Parameters<typeof toErrorResponse>[0]): NextResponse {
+  const { status, body } = toErrorResponse(error);
+  return NextResponse.json(body, { status });
+}
+```
+
+```ts title="src/app/api/orders/[id]/route.ts"
+import { NextResponse, type NextRequest } from "next/server";
+import { toErrorResponse } from "../../../../server/http";
+import { handlers } from "../../../../server/instance";
+
+/** In Next.js 16 `params` is a Promise, so the context is typed that way. */
+type Context = { params: Promise<{ id: string }> };
+
+export async function GET(_request: NextRequest, { params }: Context): Promise<NextResponse> {
+  const { id } = await params;
+  const result = await handlers.getOrder({ params: { id } });
+
+  if (!result.ok) {
+    const { status, body } = toErrorResponse(result.error);
+    return NextResponse.json(body, { status });
+  }
+  return NextResponse.json(result.value);
+}
+```
+
+## What to notice
+
+- **The service speaks business, not HTTP.** `DomainError` has `not-found`, `unknown-sku` and
+  `cannot-cancel`. There is no `404` anywhere in `orders-service.ts` ([*Controllers, Services,
+  Repositories*](/docs/express-layers)).
+- **`OrdersService` is `ReturnType<typeof createOrdersService>`.** Derived from the function, so the type
+  can never drift from the implementation ([*Utility Types: Unions & Functions*](/docs/utility-types-unions)).
+- **`toErrorResponse` is exhaustive.** Its `default` branch is `assertNever`. Add a `DomainError` kind and
+  this is the function that refuses to compile until you decide what it means over HTTP.
+- **Messages in responses are fixed strings.** Nothing from an exception message, a stack trace or a
+  database error ever reaches a client.
+- **`Handlers` is a mapped type over the route table.** One handler per route, each taking exactly that
+  route's `InputOf` and returning exactly that route's `WireResponseOf`. In `getOrder`, the destructured
+  `params.id` is a `string` because the contract says so, not because anyone wrote it twice
+  ([*Mapped Types & Key Remapping*](/docs/mapped-types)).
+- **`mapResult(..., toWire)` converts at the edge.** The service works in domain types and the handler
+  returns wire types, so the conversion appears exactly where the layers meet.
+- **In `POST`, the body is `unknown` until the schema says otherwise.** `request.json()` is typed `any`;
+  assigning it to `unknown` stops the `any` spreading. The `try`/`catch` is separate because malformed
+  JSON throws before validation begins ([*Route Handlers*](/docs/nextjs-route-handlers)).
+- **`params` is a Promise in Next.js 16.** That is why the context is typed
+  `{ params: Promise<{ id: string }> }` and awaited ([*Pages, Layouts & Route Params*](/docs/nextjs-pages-layouts)).
+- **`instance.ts` is one module-level service.** Every request in the process sees the same orders. A real
+  system would put a database behind an interface here; the rest of the code would not change.
+
+## Try breaking it
+
+Delete the `cancelOrder` handler from `createHandlers`. The compiler reports
+`Property 'cancelOrder' is missing in type '{ listOrders: ...` on the `return` in `handlers.ts`. The
+contract says four routes exist, so the server must handle four.
+
+Now add a new kind to `DomainError`, for example `{ kind: "out-of-stock"; sku: string }`. You get
+`Argument of type '{ kind: "out-of-stock"; sku: string; }' is not assignable to parameter of type 'never'`
+inside `toErrorResponse`. Every place that turns a domain failure into something else has to
+be told about the new one.
+
+In `instance.ts`, replace `cents(4900)` with the plain number `4900`. The error is on the whole
+`Map`: `Type 'Map<string, { name: string; unitPrice: number; }>' is not assignable to type
+'ReadonlyMap<string, CatalogItem>'`. Money cannot sneak into the catalogue unbranded.
+
+## Stretch
+
+1. Add the `cancelOrder` route file (`app/api/orders/[id]/cancel/route.ts`). Which parts can you copy
+   from the other route files, and which does the compiler make you write?
+2. Replace the in-memory `Map` with an interface (`OrdersRepository`) and an in-memory implementation.
+   The service should receive it as a parameter. What does that change about testing?
+3. `listOrders` always returns `next_cursor: null`. Implement real cursor pagination in the service
+   and the handler, keeping the contract's types.

@@ -1,0 +1,103 @@
+# Step 3: Write the contract
+
+## Goal
+
+Describe every endpoint in **one object**, and derive from it the types that the client and the
+server will both depend on: what each route takes in, and what it returns.
+
+## The route table
+
+```ts title="src/contract/routes.ts"
+import type { z } from "zod";
+import { CreateOrderBodySchema, OrderListSchema, OrderSchema } from "./schemas";
+
+/** One entry per endpoint: the method and path, and schemas for what goes in and comes out. */
+export const routes = {
+  listOrders: { method: "GET", path: "/orders", response: OrderListSchema },
+  getOrder: { method: "GET", path: "/orders/:id", response: OrderSchema },
+  createOrder: { method: "POST", path: "/orders", body: CreateOrderBodySchema, response: OrderSchema },
+  cancelOrder: { method: "POST", path: "/orders/:id/cancel", response: OrderSchema },
+} as const;
+
+export type Routes = typeof routes;
+export type RouteName = keyof Routes;
+
+/** `"/orders/:id/lines/:lineId"` -> `"id" | "lineId"` */
+type ExtractParams<Path extends string> =
+  Path extends `${string}:${infer Param}/${infer Rest}`
+    ? Param | ExtractParams<`/${Rest}`>
+    : Path extends `${string}:${infer Param}`
+      ? Param
+      : never;
+
+type PathParamsOf<R extends RouteName> = ExtractParams<Routes[R]["path"]>;
+
+type BodyOf<R extends RouteName> = Routes[R] extends { body: infer B extends z.ZodType } ? z.input<B> : never;
+
+/** What the CLIENT receives: parsed and converted into domain types. */
+export type ResponseOf<R extends RouteName> = z.output<Routes[R]["response"]>;
+
+/** What the SERVER returns: the wire shape, before the client parses it. */
+export type WireResponseOf<R extends RouteName> = z.input<Routes[R]["response"]>;
+
+/** The input a caller must supply: only the parts this route actually has. */
+export type InputOf<R extends RouteName> = ([BodyOf<R>] extends [never] ? unknown : { body: BodyOf<R> }) &
+  ([PathParamsOf<R>] extends [never] ? unknown : { params: Record<PathParamsOf<R>, string> });
+```
+
+## What the compiler computes
+
+You write four entries. TypeScript works out the rest. These are the types it derives, checked
+against the real project:
+
+| Type | Result |
+| ---- | ------ |
+| `RouteName` | `"listOrders" \| "getOrder" \| "createOrder" \| "cancelOrder"` |
+| `InputOf<"listOrders">` | `unknown` (nothing to pass) |
+| `InputOf<"getOrder">` | `{ params: Record<"id", string> }` |
+| `InputOf<"cancelOrder">` | `{ params: Record<"id", string> }` |
+| `InputOf<"createOrder">` | `{ body: { customer_email: string; lines: { sku: string; quantity: number }[]; coupon_code?: string \| undefined } }` |
+| `ResponseOf<"getOrder">` | `Order` (the domain type from Step 1) |
+| `ResponseOf<"listOrders">` | `{ items: Order[]; next_cursor: string \| null }` |
+| `WireResponseOf<"getOrder">` | `OrderWire` (what the server sends) |
+
+## What to notice
+
+- **`as const` on the table** keeps `"/orders/:id"` as a literal type rather than `string`. Without
+  that, the path parameters could not be read from it.
+- **Path parameters are derived from the path text.** `ExtractParams` is a recursive template literal
+  type ([*Template Literal Types*](/docs/template-literal-types)): it pulls `id` out of `"/orders/:id/cancel"`. Nobody writes
+  `params: { id: string }` next to a path that already says `:id`.
+- **`InputOf` is built from conditionals.** `[BodyOf<R>] extends [never]` asks "does this route have a
+  body?" and the answer decides whether `body` appears in the input at all ([*Conditional Types &
+  infer*](/docs/conditional-types)). The tuple brackets stop the check distributing over a union.
+- **`unknown & X` is `X`.** That is why a route with no body contributes `unknown` to the
+  intersection: it is the neutral element, and disappears.
+- **Two response types, on purpose.** The same schema has an *output* (what a client receives, after
+  conversion) and an *input* (what a server must send, before conversion). `ResponseOf` and
+  `WireResponseOf` name them ([*Modelling an API Contract*](/docs/api-contract-modelling)).
+- **Nothing here runs.** This file only needs the schemas and produces types. It is also the
+  *only* place the endpoints are listed.
+
+## Try breaking it
+
+Add a fifth route to the table:
+
+{/* check:skip */}
+```ts
+shipOrder: { method: "POST", path: "/orders/:id/ship", response: OrderSchema },
+```
+
+The project does not compile again until you have written two more things. The compiler reports
+`Property 'shipOrder' is missing` in **two files you did not touch**: the client's table of senders
+(`api-client.ts`, Step 4) and the server's handlers (`handlers.ts`, Step 5). Adding an endpoint
+to the contract creates a to-do list on both sides, and the compiler is the one keeping it. Take the
+line back out before continuing.
+
+## Stretch
+
+1. Add a `listOrders` query parameter, `status`, that filters by status. Which parts of the project
+   need to change? Which parts change *automatically*?
+2. `InputOf` does not yet include `query`. Extend the route entries and the type to support it, in
+   the same style as `body`.
+3. Why does `BodyOf` use `infer B extends z.ZodType` rather than just `infer B`?

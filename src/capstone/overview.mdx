@@ -1,0 +1,119 @@
+# The Orders Desk
+
+## What you will build
+
+A small orders system, typed end to end: customers place orders, an operator lists them and
+cancels the ones that can still be cancelled. It is 14 files, and every one of them is
+shown on these pages.
+
+It is small on purpose. The point is not the feature list; it is that **one idea flows through
+every layer**: a single description of the API produces the types for the client, the server
+and the UI, and nothing is written twice.
+
+## Three rules the whole project follows
+
+1. **One source of truth.** The wire format is described once, as schemas. The client's
+   types, the server's types and the response parsing all come from that description.
+2. **Failure is data.** Anything that can reasonably go wrong comes back as a value
+   (`Result` with a typed error), not as an exception, so the compiler makes every caller
+   decide what to do.
+3. **Check at the edge, trust inside.** Everything that arrives from outside the program
+   (a response body, a request body) starts as `unknown` and is validated once. After that,
+   the types are believed.
+
+## How the pieces fit
+
+```text
+  UI (React)                 Client                  Server
+  ----------                 ------                  ------
+  OrdersDesk  --call()-->    createClient  --HTTP--> Next.js route files
+  reducer                    parses responses         |
+                             into domain types        v
+                                                     Handlers  (one per route, checked
+                                                     |          against the contract)
+                                                     v
+                                                     Service   (business rules, Result)
+
+  Shared by all of them:  Contract (schemas + routes)  .  Domain types  .  Result  .  ApiError
+```
+
+## The files
+
+```text
+src/
+  shared/
+    result.ts            Result, ok, err, assertNever
+    api-error.ts         ApiError, toApiError, messageFor
+  domain/
+    order.ts             Order and friends, branded Cents and OrderId
+  contract/
+    schemas.ts           wire-format schemas, and the conversion to domain types
+    routes.ts            the route table and the types derived from it
+  client/
+    api-client.ts        createClient: a typed call()
+  server/
+    orders-service.ts    business rules
+    http.ts              domain errors -> HTTP responses
+    handlers.ts          one handler per route, checked against the contract
+    instance.ts          the process-wide service and handlers
+  app/api/orders/
+    route.ts             Next.js: GET (list) and POST (create)
+    [id]/route.ts        Next.js: GET (one order)
+  ui/
+    orders-state.ts      the reducer and its states
+    OrdersDesk.tsx       the React component
+```
+
+## The steps
+
+| Step | You build | You apply |
+| ---- | --------- | --------- |
+| [1. Model the domain](/capstone/01-domain) | `result.ts`, `order.ts` | [*Branded Types*](/docs/branded-types), [*Enums & as const*](/docs/enums-and-as-const), [*Result & Error Types*](/docs/result-types), [*Type Aliases & Interfaces*](/docs/type-aliases-and-interfaces) |
+| [2. Describe the wire format](/capstone/02-wire-format) | `schemas.ts` | [*Typing API Responses*](/docs/typing-api-responses), [*unknown at the Boundary*](/docs/unknown-at-the-boundary), [*DTOs & Runtime Validation*](/docs/dtos-and-validation) |
+| [3. Write the contract](/capstone/03-contract) | `routes.ts` | [*Modelling an API Contract*](/docs/api-contract-modelling), [*Template Literal Types*](/docs/template-literal-types), [*Conditional Types & infer*](/docs/conditional-types) |
+| [4. Build the typed client](/capstone/04-client) | `api-error.ts`, `api-client.ts` | [*A Generic API Client*](/docs/generic-api-client), [*Error Modelling*](/docs/api-error-modelling), [*Mapped Types & Key Remapping*](/docs/mapped-types) |
+| [5. Implement the server](/capstone/05-server) | service, handlers, route files | [*Route Handlers*](/docs/nextjs-route-handlers), [*Controllers, Services, Repositories*](/docs/express-layers), [*Discriminated Unions*](/docs/discriminated-unions) |
+| [6. Drive the UI with a state machine](/capstone/06-ui) | `orders-state.ts`, `OrdersDesk.tsx` | [*useState & useReducer*](/docs/react-state), [*Async Data in Components*](/docs/react-async-data), [*Narrowing*](/docs/narrowing) |
+| [7. Tighten and review](/capstone/07-tighten) | nothing new | [*Strictness Flags*](/docs/strictness-flags), [*Avoiding any*](/docs/avoiding-any), [*Anti-Patterns*](/docs/anti-patterns) |
+
+## How to work through it
+
+- **Type the files yourself** rather than pasting them. The point is to feel where the compiler
+  helps. If you do paste, read each file before moving on.
+- **Build in order.** Each step only imports files from earlier steps.
+- **Run the compiler after every file:** `npx tsc --noEmit`.
+- **Do the "Try breaking it" section** at the end of each step. Each lists a change to make and
+  the error the compiler gives. Reading those errors is half of what this exercise teaches.
+- **The stretch tasks have no solutions**, like every Practice section in the course. Try
+  them, and bring your attempts for review.
+
+## Before you start
+
+You need a TypeScript project with `strict` on, and one dependency:
+
+```bash
+npm install zod
+```
+
+The Next.js route files and the React component assume Next.js 16 and React 19. The other
+files do not depend on either, so you can build everything up to Step 5 in any TypeScript
+project. These settings from this site's `tsconfig.json` matter for the code to behave as shown:
+`strict`, `noUncheckedIndexedAccess`, and `verbatimModuleSyntax`
+(see [Strictness Flags](/docs/strictness-flags)).
+
+## What has been checked
+
+This is not sample code that merely looks right.
+
+- All 14 files compile together as one project under `strict` plus `noUncheckedIndexedAccess`,
+  `verbatimModuleSyntax`, `noUnusedLocals` and `noUnusedParameters`. The code blocks on these
+  pages are compiled as that project by this site's content check, so a page cannot drift from
+  code that builds.
+- The project was also **run**, end to end: the typed client talking through a fake `fetch`
+  to the real handlers and service, covering success, validation errors, a missing order,
+  cancelling twice, a network failure, a malformed response and a server error.
+- The React component and state machine pass this repository's lint rules for hooks.
+- Every error message quoted in the "Try breaking it" sections was produced by making that
+  exact change to the project. Those scratch snippets are deliberately broken and import files
+  from the project, so the site's content check skips them (they are marked as skipped there);
+  the messages come from the real runs instead.
