@@ -1,0 +1,122 @@
+# Arrays & Tuples
+
+## What
+
+An **array** is a list of any length where every element has the same type. A **tuple**
+is a list of *fixed length* where each position has its own type.
+
+## Arrays
+
+```ts
+const tags: string[] = ["typescript", "react"];
+const scores: Array<number> = [98, 87]; // identical; generic spelling
+
+type Product = { id: number; name: string; price: number };
+const catalog: Product[] = [{ id: 1, name: "Keyboard", price: 49 }];
+```
+
+`T[]` and `Array<T>` mean exactly the same. Use `T[]` for simple types and `Array<...>`
+when the element type is complex.
+
+### `readonly` arrays
+
+```ts
+const roles: readonly string[] = ["admin", "editor"];
+roles.push("viewer"); // Error: 'push' does not exist on type 'readonly string[]'
+```
+
+Use `readonly T[]` for function parameters you do not mutate. It documents intent and
+accepts both mutable and readonly arrays.
+
+```ts
+function total(prices: readonly number[]): number {
+  return prices.reduce((sum, price) => sum + price, 0);
+}
+```
+
+### Indexing can miss
+
+This project enables `noUncheckedIndexedAccess`, so an index lookup includes
+`undefined` in its type:
+
+```ts
+const names: string[] = ["Ada", "Grace"];
+const first = names[0]; // string | undefined
+first.toUpperCase(); // Error: 'first' is possibly 'undefined'
+```
+
+That is the honest type: nothing guarantees the array is non-empty. Handle it, rather
+than asserting it away.
+
+```ts
+const names: string[] = ["Ada", "Grace"];
+const first = names[0] ?? "Anonymous";
+```
+
+## Tuples
+
+```ts
+type Point = [x: number, y: number];
+
+const origin: Point = [0, 0];
+const broken: Point = [1]; // Error: Source has 1 element(s) but target requires 2
+```
+
+The labels (`x`, `y`) are documentation only, but they show up in editor tooltips.
+
+### Real-world example: returning two related values
+
+```ts
+function minMax(values: number[]): [min: number, max: number] {
+  return [Math.min(...values), Math.max(...values)];
+}
+
+const [min, max] = minMax([4, 8, 15]); // both number
+```
+
+You already use tuples: React's `useState` returns `[state, setState]`, and
+`Object.entries` returns `[string, value][]`.
+
+Positions within a tuple are *not* `| undefined`, because the length is known:
+
+```ts
+type Range = [start: number, end: number];
+
+function width(range: Range): number {
+  return range[1] - range[0];
+}
+```
+
+## Common mistake: arrays are not inferred as tuples
+
+```ts
+function distance(point: [number, number]): number {
+  return Math.hypot(point[0], point[1]);
+}
+
+const point = [3, 4]; // inferred as number[], not a tuple
+distance(point); // Error: 'number[]' is not assignable to '[number, number]'
+```
+
+```ts
+function distance(point: [number, number]): number {
+  return Math.hypot(point[0], point[1]);
+}
+
+const point: [number, number] = [3, 4]; // annotate it
+distance(point);
+```
+
+## When to use which
+
+- **Array** — a collection of the same kind of thing (users, tags, prices).
+- **Tuple** — a small, fixed, positional group (coordinates, `[value, setter]`).
+- If a tuple has more than ~3 elements, or its positions need explaining, use an
+  object instead.
+
+## Practice
+
+1. Write `lastItem(values: readonly string[])` that returns the last element. What does
+   its return type have to be, and why?
+2. Write `splitName(full: string): [first: string, last: string]`. Notice what
+   `noUncheckedIndexedAccess` forces you to do with the result of `.split(" ")`.

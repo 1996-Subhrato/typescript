@@ -1,0 +1,168 @@
+# Classes
+
+## What
+
+TypeScript classes are JavaScript classes plus types and **access modifiers**. A class
+declares the shape of its instances: what properties exist, their types, and who can
+touch them.
+
+```ts
+class BankAccount {
+  readonly id: string;
+  private balance = 0;
+
+  constructor(id: string) {
+    this.id = id;
+  }
+
+  deposit(amount: number): void {
+    if (amount <= 0) throw new Error("Amount must be positive");
+    this.balance += amount;
+  }
+
+  get currentBalance(): number {
+    return this.balance;
+  }
+}
+
+const account = new BankAccount("acc_1");
+account.deposit(50);
+account.balance; // Error: 'balance' is private
+account.id = "other"; // Error: 'id' is a read-only property
+```
+
+## Access modifiers
+
+| Modifier | Accessible from |
+| -------- | --------------- |
+| `public` (default) | Anywhere |
+| `protected` | The class and its subclasses |
+| `private` | The class only |
+| `readonly` | Anywhere to read; assignable only in the constructor |
+
+```ts
+class Employee {
+  constructor(
+    public readonly name: string,
+    protected salary: number,
+  ) {}
+}
+
+class Manager extends Employee {
+  raise(percent: number): number {
+    return this.salary * (1 + percent / 100); // protected: allowed in a subclass
+  }
+}
+
+const manager = new Manager("Ada", 5000);
+manager.name;
+manager.salary; // Error: 'salary' is protected
+```
+
+### Parameter properties
+
+Writing a modifier on a constructor parameter, as `public readonly name: string` above,
+declares the field and assigns it in one step. It removes a lot of boilerplate.
+
+### `private` vs `#private`
+
+TypeScript's `private` is **compile-time only** — at runtime the field is an ordinary
+property anyone can read. JavaScript's own `#field` syntax is genuinely private at
+runtime.
+
+```ts
+class Session {
+  private token = "abc"; // hidden by the compiler only
+  #secret = "xyz"; // hidden by the language
+
+  describe(): string {
+    return `${this.token.length}${this.#secret.length}`;
+  }
+}
+```
+
+Use `#` when privacy matters for safety; `private` is fine for design intent.
+
+## Getters, setters and statics
+
+```ts
+class Temperature {
+  private celsius = 0;
+
+  get fahrenheit(): number {
+    return this.celsius * 1.8 + 32;
+  }
+
+  set fahrenheit(value: number) {
+    this.celsius = (value - 32) / 1.8;
+  }
+}
+
+class IdGenerator {
+  private static next = 1;
+
+  static create(prefix: string): string {
+    return `${prefix}_${IdGenerator.next++}`;
+  }
+}
+
+const id = IdGenerator.create("ord"); // "ord_1" — called on the class, not an instance
+```
+
+A getter with no setter is read-only to callers.
+
+## Real-world example: a service with dependencies
+
+```ts
+type User = { id: number; email: string };
+
+class UserService {
+  private readonly users = new Map<number, User>();
+
+  add(user: User): void {
+    this.users.set(user.id, user);
+  }
+
+  find(id: number): User | undefined {
+    return this.users.get(id);
+  }
+
+  get count(): number {
+    return this.users.size;
+  }
+}
+```
+
+`new Map<number, User>()` is a **generic** instantiation — the `<number, User>` fixes the
+key and value types. Generics get their own topic shortly.
+
+## Common mistakes
+
+**Uninitialised properties**
+
+```ts
+class Cart {
+  items: string[]; // Error: Property 'items' has no initializer and is not definitely assigned in the constructor
+}
+```
+
+Initialise it (`items: string[] = []`) or assign it in the constructor.
+
+**Classes are structural, not nominal**
+
+Two classes with the same public shape are interchangeable to the compiler. Adding a
+`private` member is what makes a class effectively nominal.
+
+**Reaching for a class by habit.** In TypeScript a plain object plus functions is often
+simpler than a class. Use a class when you need encapsulated state or several
+implementations behind one interface.
+
+## Practice
+
+Write a `Cart` class with:
+
+- a private `items` list of `{ sku: string; price: number; quantity: number }`
+- `add(item)`, which throws on a non-positive quantity
+- a read-only getter `total`
+
+Then confirm `cart.items` is a compile error from outside the class.

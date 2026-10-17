@@ -1,0 +1,90 @@
+# What TypeScript Is
+
+## What
+
+TypeScript is JavaScript plus a **static type layer**. Every valid `.js` file is a
+valid `.ts` file. The types are erased at build time — nothing about them exists at
+runtime.
+
+## Why it exists
+
+JavaScript only tells you about a mistake when the line actually runs, often in
+production. TypeScript moves that feedback to the moment you type.
+
+```js
+// JavaScript — no complaint until this runs with the wrong argument
+function getUserName(user) {
+  return user.name.toUpperCase();
+}
+
+getUserName({ id: 1 }); // TypeError: Cannot read properties of undefined
+```
+
+```ts
+// TypeScript — the error is reported before you save
+type User = {
+  id: number;
+  name: string;
+};
+
+function getUserName(user: User): string {
+  return user.name.toUpperCase();
+}
+
+getUserName({ id: 1 }); // Error: Property 'name' is missing in type '{ id: number; }'
+// Argument of type '{ id: number; }' is not assignable to parameter of type 'User'.
+```
+
+**What changed:** one `type` declaration and two annotations. **What you gained:**
+the compiler now rejects every call site that forgets `name`, plus autocomplete on
+`user.` everywhere in the codebase.
+
+## What actually runs
+
+This is the single most important mental model:
+
+```ts
+const price: number = 19.99;
+```
+
+compiles to:
+
+```js
+const price = 19.99;
+```
+
+Types are **compile-time only**. There is no `number` check in the shipped bundle.
+That has one consequence worth internalising now: TypeScript cannot protect you from
+data that arrives at runtime — an API response, `JSON.parse`, a form field. Typing
+those is a separate skill, covered later in *Real-World API Typing*.
+
+## Common mistake
+
+Assuming a type annotation validates data:
+
+```ts
+type User = { id: number; name: string };
+
+async function loadUser(res: Response): Promise<string> {
+  // This asserts a shape. It does not check one.
+  const user = (await res.json()) as User;
+  // If the API returns { id: 1 }, `user.name` is undefined at runtime,
+  // and TypeScript still lets you call user.name.toUpperCase().
+  return user.name.toUpperCase();
+}
+```
+
+## Practice
+
+Take this JavaScript and add types so that the last line fails to compile:
+
+```js
+function applyDiscount(product, percent) {
+  return product.price * (1 - percent / 100);
+}
+
+applyDiscount({ price: 100 }, "20");
+```
+
+Aim for a named `Product` type and an explicit return type. Don't look for the
+solution yet — try it, then ask.

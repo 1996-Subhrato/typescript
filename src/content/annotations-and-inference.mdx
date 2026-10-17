@@ -1,0 +1,108 @@
+# Annotations & Inference
+
+## What
+
+An **annotation** is a type you write: `: string`. **Inference** is a type TypeScript
+works out from the value. Well-typed code is mostly inference, with annotations placed
+at *boundaries* — function parameters, exported APIs, and data from outside.
+
+```ts
+const email: string = "ada@example.com"; // annotation (redundant here)
+const retries = 3; // inferred: number
+```
+
+## How inference behaves
+
+### `const` keeps the literal, `let` widens it
+
+```ts
+const status = "active"; // type: "active"
+let current = "active"; // type: string
+```
+
+A `const` can never change, so its type can be as narrow as its value. A `let` can be
+reassigned, so TypeScript widens it to the general type.
+
+### Return types are inferred
+
+```ts
+function getTotal(price: number, quantity: number) {
+  return price * quantity;
+}
+
+const total = getTotal(19.99, 3); // number, no annotation needed
+```
+
+### Callbacks are typed from context
+
+```ts
+const names = ["ada", "grace"].map((name) => name.toUpperCase());
+// `name` is inferred as string from the array it came from
+```
+
+This is called **contextual typing**. It is why you almost never annotate callback
+parameters in `map`, `filter`, `reduce` or event handlers.
+
+## When to annotate
+
+| Place | Annotate? | Why |
+| ----- | --------- | --- |
+| Function parameters | **Always** | Nothing to infer from — they are the contract |
+| Exported function return type | Usually | Fixes the public contract; catches accidental changes |
+| Local variable with an initial value | No | Inference already knows |
+| Empty array / empty object | **Yes** | Nothing to infer from |
+| Data from `JSON.parse`, `fetch`, `localStorage` | **Yes** | TypeScript cannot see across the network |
+
+## Real-world example
+
+```ts
+type User = { id: number; name: string };
+
+async function fetchUser(id: number): Promise<User> {
+  const res = await fetch(`/api/users/${id}`);
+  return res.json();
+}
+```
+
+The `Promise<User>` annotation is the contract every caller relies on. Note that
+`res.json()` returns `Promise<any>`, so nothing here *verifies* the response matches
+`User` — the annotation states the intent, it does not enforce it.
+
+## Common mistakes
+
+**Annotating away a useful literal type**
+
+```ts
+const roleA: string = "admin"; // type is string — "admin" is lost
+const roleB = "admin"; // type is "admin"
+```
+
+**Leaving an empty object or array to be inferred**
+
+```ts
+const user = {};
+user.name = "Ada"; // Error: Property 'name' does not exist on type '{}'
+```
+
+```ts
+type Item = { sku: string; quantity: number };
+
+const cart: Item[] = []; // annotate empty collections
+cart.push({ sku: "kb-01", quantity: 1 });
+```
+
+## Practice
+
+Without running anything, predict the type of each variable, then hover over it in
+your editor to check:
+
+```ts
+const a = 10;
+let b = 10;
+const c = [1, 2, 3];
+const d = { id: 1, tags: ["new"] };
+const e = c.map((n) => n > 1);
+const f = (x: number) => (x > 0 ? "positive" : "non-positive");
+```
+
+Two of these have a surprising type. Find them, then explain why.

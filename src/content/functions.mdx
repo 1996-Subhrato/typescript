@@ -1,0 +1,131 @@
+# Functions
+
+## What
+
+Function types describe what goes **in** (parameters) and what comes **out** (return
+type). Parameters must be annotated; return types are usually inferred.
+
+```js
+function addTax(price, rate) {
+  return price * (1 + rate);
+}
+```
+
+```ts
+function addTax(price: number, rate: number): number {
+  return price * (1 + rate);
+}
+
+addTax(100); // Error: Expected 2 arguments, but got 1
+addTax(100, "0.2"); // Error: 'string' is not assignable to 'number'
+```
+
+JavaScript accepts both bad calls and returns `NaN` for the second. TypeScript rejects
+both before the code runs.
+
+## Parameter types
+
+An unannotated parameter has no type to infer from, so `noImplicitAny` rejects it:
+
+```ts
+function count(items) { // Error: Parameter 'items' implicitly has an 'any' type
+  return items.length;
+}
+```
+
+## Return types
+
+Inference handles most functions. Annotate the return type when the function is
+exported, when you want the compiler to check *every* return path against a stated
+contract, or when it returns a union.
+
+```ts
+type OrderItem = { price: number; quantity: number };
+
+function orderTotal(items: OrderItem[]): number {
+  return items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+}
+```
+
+## Optional, default and rest parameters
+
+```ts
+// Optional: `title` is string | undefined inside the function
+function greet(name: string, title?: string): string {
+  return title ? `${title} ${name}` : name;
+}
+
+// Default: type inferred from the default, and the argument becomes optional
+function paginate(page = 1, pageSize = 20): string {
+  return `page=${page}&size=${pageSize}`;
+}
+
+// Rest: collects the remaining arguments into an array
+function sum(...prices: number[]): number {
+  return prices.reduce((total, price) => total + price, 0);
+}
+
+greet("Ada");
+paginate(); // OK — both have defaults
+sum(10, 20, 30);
+```
+
+Optional parameters must come after required ones:
+
+```ts
+function build(options?: string, name: string): string { // Error: A required parameter cannot follow an optional parameter
+  return name + (options ?? "");
+}
+```
+
+## Function types
+
+You can describe a function without writing it, which is how callbacks and
+dependencies are typed.
+
+```ts
+type Formatter = (value: number) => string;
+
+const usd: Formatter = (value) => `$${value.toFixed(2)}`; // `value` is inferred
+const euro: Formatter = (value) => `${value.toFixed(2)} EUR`;
+
+function formatAll(prices: number[], format: Formatter): string[] {
+  return prices.map(format);
+}
+```
+
+## Real-world example: a service function
+
+```ts
+type CartItem = { sku: string; price: number; quantity: number };
+
+function calculateTotal(
+  items: readonly CartItem[],
+  taxRate = 0.2,
+  couponCode?: string,
+): number {
+  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const discounted = couponCode === "WELCOME10" ? subtotal * 0.9 : subtotal;
+  return discounted * (1 + taxRate);
+}
+```
+
+## Common mistake: assignability goes the other way from what you expect
+
+A function that takes **fewer** parameters can stand in for one that takes more —
+callers simply ignore the extras. The reverse is an error.
+
+```ts
+const fewer: (id: number, label: string) => void = (id: number) => {};
+const more: (id: number) => void = (id: number, label: string) => {}; // Error: target provides too few arguments
+```
+
+This is why `[1, 2, 3].forEach((n) => ...)` works even though `forEach` passes three
+arguments.
+
+## Practice
+
+1. Write `calculateShipping(weightKg: number, express = false): number`. Standard costs
+   `weightKg * 2`; express doubles it.
+2. Write `longest(...words: string[])`. What is the right return type when `words` can
+   be empty? (`noUncheckedIndexedAccess` has an opinion.)

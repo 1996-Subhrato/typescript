@@ -1,0 +1,177 @@
+# any, unknown, never, void
+
+## What
+
+Four special types that do not describe ordinary values.
+
+| Type | Meaning | Use it when |
+| ---- | ------- | ----------- |
+| `any` | "Stop checking this." | Almost never |
+| `unknown` | "Something, but I have not checked what." | Input you do not trust |
+| `never` | "No value can exist here." | Exhaustiveness, functions that throw |
+| `void` | "Returns nothing useful." | Functions called for side effects |
+
+## `any`: the escape hatch
+
+`any` switches type checking off for that value, and the contamination spreads: anything
+derived from an `any` is also `any`.
+
+```ts
+const data: any = JSON.parse('{"id": 1}');
+
+data.nonsense.deeply.nested(); // compiles — and crashes at runtime
+const id: string = data.id; // compiles — id is actually a number
+```
+
+Notice `JSON.parse` itself returns `any`. Many standard-library functions do, so `any`
+enters your code without you writing it.
+
+## `unknown`: the safe version
+
+`unknown` accepts any value, like `any`, but you cannot *do* anything with it until you
+narrow it.
+
+```ts
+const data: unknown = JSON.parse('{"id": 1}');
+
+data.id; // Error: 'data' is of type 'unknown'
+```
+
+```ts
+function parseUserId(input: unknown): number {
+  if (typeof input === "number") return input;
+  if (typeof input === "string") return Number(input);
+  throw new Error("Invalid user id");
+}
+```
+
+**Rule of thumb:** wherever you would write `any`, write `unknown`, then let the
+compiler tell you what needs checking.
+
+### Real-world: `catch`
+
+Under `strict`, the `catch` variable is `unknown`, because anything can be thrown.
+
+```ts
+function safeParse(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    console.error(error.message); // Error: 'error' is of type 'unknown'
+    return undefined;
+  }
+}
+```
+
+```ts
+function safeParse(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
+    return undefined;
+  }
+}
+```
+
+## `never`: the empty type
+
+Two uses. First, a function that never returns:
+
+```ts
+function fail(message: string): never {
+  throw new Error(message);
+}
+```
+
+Second — and far more valuable — **exhaustiveness checking**. After you have handled
+every case, whatever is left is `never`. Assigning it to a `never` variable proves you
+covered everything.
+
+```ts
+type Shape = "circle" | "square";
+
+function area(shape: Shape, size: number): number {
+  switch (shape) {
+    case "circle":
+      return Math.PI * size ** 2;
+    case "square":
+      return size ** 2;
+    default: {
+      const unreachable: never = shape;
+      return unreachable;
+    }
+  }
+}
+```
+
+Now someone adds `"triangle"` to `Shape` and forgets this function:
+
+```ts
+type Shape = "circle" | "square" | "triangle";
+
+function area(shape: Shape, size: number): number {
+  switch (shape) {
+    case "circle":
+      return Math.PI * size ** 2;
+    case "square":
+      return size ** 2;
+    default: {
+      const unreachable: never = shape; // Error: '"triangle"' is not assignable to 'never'
+      return unreachable;
+    }
+  }
+}
+```
+
+The compiler points at every function that needs updating. This pattern becomes
+essential with discriminated unions.
+
+## `void`: no meaningful return
+
+```ts
+function logOrder(id: string): void {
+  console.log(`Processing ${id}`);
+}
+```
+
+A callback typed to return `void` may still be given a function that returns something.
+The result is just ignored.
+
+```ts
+const ids: number[] = [];
+
+[1, 2, 3].forEach((n) => ids.push(n)); // push returns a number; forEach ignores it
+```
+
+`void` is *not* the same as `undefined`. Use `void` for "I do not care what this
+returns", and `undefined` when the value is meaningful.
+
+## Which one do I use?
+
+- Unsure what a value is → **`unknown`**, then narrow.
+- Truly need to opt out, with a comment saying why → `any`.
+- Function never completes normally → **`never`**.
+- Function does work and returns nothing → **`void`**.
+
+## Common mistakes
+
+- **Using `any` to get past an error.** The error was information. Find the real type.
+- **Treating `unknown` like `any`.** It is deliberately unusable until narrowed. If it
+  feels annoying, that is the feature working.
+- **Annotating a function that always returns as `never`.** `never` means it
+  *cannot* return.
+
+## Practice
+
+This function compiles but is unsafe. Rewrite it with `unknown`, so that a malformed
+response cannot crash it:
+
+```ts
+function readTotal(response: any): number {
+  return response.data.order.total;
+}
+```
+
+Hint: you will need `typeof`, `in` and a check for `null`.

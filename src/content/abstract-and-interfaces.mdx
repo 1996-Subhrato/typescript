@@ -1,0 +1,151 @@
+# Abstract Classes & implements
+
+## What
+
+Three ways to relate classes to each other:
+
+| Keyword | Meaning | Gives you |
+| ------- | ------- | --------- |
+| `implements` | "I fulfil this contract." | Compile-time check only. No code shared |
+| `extends` | "I am a specialised version of this class." | Inherits code and shape |
+| `abstract` | "A base class that cannot be created on its own." | Shared code plus required members |
+
+## `implements`: program to a contract
+
+```ts
+interface PaymentProcessor {
+  process(amountCents: number): Promise<string>;
+}
+
+class StripeProcessor implements PaymentProcessor {
+  async process(amountCents: number): Promise<string> {
+    return `stripe_${amountCents}`;
+  }
+}
+
+class BrokenProcessor implements PaymentProcessor {} // Error: Property 'process' is missing
+```
+
+`implements` checks the class against the interface. It does **not** copy anything in —
+the class must write every member itself. A class can implement several interfaces:
+`class A implements B, C`.
+
+## `extends`
+
+```ts
+class Animal {
+  constructor(protected readonly name: string) {}
+
+  speak(): string {
+    return `${this.name} makes a sound`;
+  }
+}
+
+class Dog extends Animal {
+  override speak(): string {
+    return `${this.name} barks`;
+  }
+}
+```
+
+### `override`
+
+This project enables `noImplicitOverride`: replacing an inherited method without the
+`override` keyword is an error. It protects against a subtle bug — renaming a method in
+the base class would otherwise silently turn the subclass method into an unrelated one.
+
+```ts
+class Animal {
+  speak(): string {
+    return "...";
+  }
+}
+
+class Cat extends Animal {
+  speak(): string { // Error: This member must have an 'override' modifier
+    return "meow";
+  }
+}
+```
+
+## `abstract`
+
+An abstract class provides shared behaviour and forces subclasses to supply the rest.
+
+```ts
+abstract class Notifier {
+  constructor(protected readonly recipient: string) {}
+
+  abstract send(message: string): void; // subclasses must implement this
+
+  notify(message: string): void {
+    this.send(`[${this.recipient}] ${message}`); // shared logic calls the abstract part
+  }
+}
+
+class EmailNotifier extends Notifier {
+  send(message: string): void {
+    console.log(`Email -> ${message}`);
+  }
+}
+
+new Notifier("ada"); // Error: Cannot create an instance of an abstract class
+new EmailNotifier("ada").notify("Order shipped");
+```
+
+Implementing an `abstract` member does not need `override`.
+
+## Composition over inheritance
+
+Inheritance couples a subclass to its parent's internals. For most application code, a
+class that *receives* its collaborators is easier to change and test.
+
+```ts
+interface PaymentProcessor {
+  process(amountCents: number): Promise<string>;
+}
+
+interface Mailer {
+  send(to: string, body: string): Promise<void>;
+}
+
+class OrderService {
+  constructor(
+    private readonly payments: PaymentProcessor,
+    private readonly mailer: Mailer,
+  ) {}
+
+  async checkout(email: string, amountCents: number): Promise<void> {
+    const receipt = await this.payments.process(amountCents);
+    await this.mailer.send(email, `Receipt ${receipt}`);
+  }
+}
+```
+
+`OrderService` depends on two small interfaces, not on Stripe or an SMTP library. In a
+test you pass fakes; in production you pass the real thing. This is the pattern behind
+the repository/service layers in *Node.js + Express*.
+
+## Which should I use?
+
+- **Interface + `implements`** — the default. Describes a capability; can be implemented
+  by anything.
+- **Abstract class** — when subclasses genuinely share *code* and a skeleton algorithm
+  (template method).
+- **Concrete `extends`** — sparingly. A hierarchy deeper than two levels is a smell.
+
+## Common mistakes
+
+- **Using inheritance to share a helper function.** Extract the function.
+- **Believing `implements` inherits implementation.** It never does.
+- **Making everything abstract "in case".**
+- **Forgetting that interfaces are erased.** You cannot check `x instanceof PaymentProcessor`
+  at runtime; there is no value there.
+
+## Practice
+
+1. Define `interface Repository` with `findById(id: number): User | undefined` and
+   `save(user: User): void`, for a `User` type of your choice.
+2. Implement it as `InMemoryUserRepository`, backed by a `Map`.
+3. Write `UserService` that takes a `Repository` in its constructor. Notice it never
+   mentions `Map` — that is the point.

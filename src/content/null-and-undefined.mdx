@@ -1,0 +1,152 @@
+# null & undefined
+
+## What
+
+Under `strictNullChecks` (part of `strict`), `null` and `undefined` are **not** members
+of other types. A `string` is always a string. If a value might be missing, the type
+must say so.
+
+```js
+// JavaScript — fails at runtime, only when the user is missing
+function userName(users, id) {
+  return users.find((u) => u.id === id).name;
+}
+```
+
+```ts
+type User = { id: number; name: string };
+
+function findUser(users: User[], id: number): User | undefined {
+  return users.find((user) => user.id === id);
+}
+
+const user = findUser([], 1);
+console.log(user.name); // Error: 'user' is possibly 'undefined'
+```
+
+The most common runtime error in JavaScript — *Cannot read properties of undefined* —
+becomes a compile error.
+
+## Handling it
+
+### Optional chaining `?.`
+
+Stops and returns `undefined` if anything before it is `null` or `undefined`.
+
+```ts
+type User = {
+  name: string;
+  address?: { city: string };
+  onLogout?: () => void;
+};
+
+function cityOf(user: User | undefined): string | undefined {
+  return user?.address?.city; // string | undefined
+}
+
+function logout(user: User): void {
+  user.onLogout?.(); // call only if defined
+}
+
+function firstTag(tags?: string[]): string | undefined {
+  return tags?.[0]; // index access too
+}
+```
+
+### Nullish coalescing `??`
+
+Supplies a fallback **only** for `null` or `undefined`.
+
+```ts
+type Options = { pageSize?: number; label?: string };
+
+function resolve(options: Options): { pageSize: number; label: string } {
+  return {
+    pageSize: options.pageSize ?? 20,
+    label: options.label ?? "Untitled",
+  };
+}
+```
+
+### `??` is not `||`
+
+`||` replaces *any falsy* value, including real ones.
+
+```ts
+type Options = { pageSize?: number };
+
+function size(options: Options): number {
+  const wrong = options.pageSize || 20; // pageSize: 0  ->  20  (bug)
+  const right = options.pageSize ?? 20; // pageSize: 0  ->  0
+  return wrong + right;
+}
+```
+
+### Narrowing
+
+```ts
+type User = { name: string };
+
+function greet(user: User | null): string {
+  if (user === null) return "Hello, guest";
+  return `Hello, ${user.name}`; // user: User
+}
+```
+
+### Assignment: `??=`
+
+```ts
+type Cache = { token?: string };
+
+function ensureToken(cache: Cache): string {
+  cache.token ??= "generated-token"; // assigns only if null/undefined
+  return cache.token;
+}
+```
+
+## `null` vs `undefined` vs optional
+
+| | Meaning | Typical source |
+| --- | --- | --- |
+| `undefined` | "not provided / not set" | Missing property, missing argument, `find` with no match |
+| `null` | "deliberately empty" | JSON APIs, database columns |
+| `prop?: T` | The key may be **absent** | Optional fields, partial updates |
+| `prop: T \| null` | The key is **always present**, value may be empty | An API that returns `"avatarUrl": null` |
+
+```ts
+type Profile = {
+  bio?: string; // key might not exist at all
+  avatarUrl: string | null; // key exists; value may be null
+};
+```
+
+Picking the wrong one produces real bugs. If the server sends `null`, typing the field
+`avatarUrl?: string` means `if (profile.avatarUrl === undefined)` is quietly wrong.
+
+## Common mistakes
+
+- **Turning `strictNullChecks` off** to make errors go away. It is the single most
+  valuable flag.
+- **Chaining `?.` everywhere** "just in case". It hides the places where a value
+  genuinely should always exist. Only use it when absence is a real possibility.
+- **Forgetting that `find`, `Map.get` and indexing return `| undefined`.**
+- **Silencing with `!`** (non-null assertion). Covered, with its risks, in
+  *Type Assertions*.
+
+## Practice
+
+```ts
+type Order = {
+  id: string;
+  customer?: {
+    name: string;
+    address?: { city: string };
+  };
+};
+```
+
+Write `getCity(order: Order): string` that returns the customer's city, or
+`"Unknown"` when any part is missing. Do it in one expression.
+
+Then revisit the earlier question from *Primitive Types*: what return type makes
+`parseQuantity("abc")` honest?

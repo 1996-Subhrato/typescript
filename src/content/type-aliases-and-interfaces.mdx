@@ -1,0 +1,122 @@
+# Type Aliases & Interfaces
+
+## What
+
+Both give a **name** to a type so you can reuse it. For object shapes they are almost
+interchangeable.
+
+```ts
+type UserId = number; // alias for a primitive
+type Coordinates = [lat: number, lng: number]; // alias for a tuple
+
+type Product = {
+  id: number;
+  name: string;
+  price: number;
+};
+
+interface Customer {
+  id: number;
+  name: string;
+  email: string;
+}
+```
+
+## Extending
+
+```ts
+interface Customer {
+  id: number;
+  name: string;
+}
+
+interface Admin extends Customer {
+  permissions: string[];
+}
+```
+
+```ts
+type Customer = { id: number; name: string };
+
+type Admin = Customer & { permissions: string[] };
+```
+
+`interface ... extends` and `type ... &` achieve the same result. The difference shows up
+when two members **conflict**: `extends` reports an error immediately, while `&` quietly
+produces `never` for the clashing property.
+
+## What only one can do
+
+| | `type` | `interface` |
+| --- | :---: | :---: |
+| Object shapes | yes | yes |
+| `implements` / `extends` by a class | yes | yes |
+| Unions (`A \| B`) | **yes** | no |
+| Primitives, tuples, function types | **yes** | partly |
+| Mapped / conditional types | **yes** | no |
+| **Declaration merging** | no | **yes** |
+
+### Declaration merging
+
+Two `interface` declarations with the same name are merged. A `type` cannot be reopened.
+
+```ts
+interface Settings {
+  theme: string;
+}
+
+interface Settings {
+  language: string;
+}
+
+const settings: Settings = { theme: "dark", language: "en" }; // needs both
+```
+
+This is how libraries let you extend their types, for example adding a property to
+Express's `Request`. It is a feature for **library authors and augmentation**; in
+application code it is more often an accident.
+
+## Which should I use?
+
+A rule that works in real codebases:
+
+- **`interface`** for object shapes that describe a public contract, especially ones a
+  class will `implement`.
+- **`type`** for everything else: unions, tuples, function types, and anything computed
+  from other types.
+- Most important: **be consistent within a codebase.** A team arguing about this
+  is wasting more time than either choice costs. *interface vs type in Practice* in
+  the Professional level gives the full decision rule.
+
+## Real-world example
+
+```ts
+type OrderStatus = "pending" | "paid" | "shipped"; // must be a type: it is a union
+
+interface Order {
+  id: string;
+  status: OrderStatus;
+  total: number;
+}
+
+interface OrderRepository {
+  findById(id: string): Order | undefined;
+  save(order: Order): void;
+}
+```
+
+## Common mistakes
+
+- **Trying to write a union with `interface`.** It is not possible; use `type`.
+- **Assuming `type` and `interface` are separate in how they check.** Both are
+  *structural*. A value fits if it has the right shape, whatever it was declared as.
+- **Reaching for declaration merging by accident** by re-declaring an interface with
+  the same name in another file.
+
+## Practice
+
+1. Define `interface Product` and `interface DigitalProduct extends Product` with a
+   `downloadUrl`.
+2. Define the same two with `type` and `&`.
+3. Add `type ProductId = string | number` and use it in `Product`. Could you have used
+   an `interface` for `ProductId`? Why not?

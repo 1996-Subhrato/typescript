@@ -1,0 +1,135 @@
+# Enums & as const
+
+## What
+
+Both model a fixed set of named values, like order statuses or user roles. TypeScript
+has a dedicated `enum` feature; the more common modern alternative is a plain object
+frozen with `as const`.
+
+## Enums
+
+```ts
+enum OrderStatus {
+  Pending = "PENDING",
+  Paid = "PAID",
+  Shipped = "SHIPPED",
+}
+
+const status: OrderStatus = OrderStatus.Paid;
+
+function isFinal(s: OrderStatus): boolean {
+  return s === OrderStatus.Shipped;
+}
+```
+
+String enums are **opaque**: the plain string is not accepted, even when it matches.
+
+```ts
+enum OrderStatus {
+  Pending = "PENDING",
+  Paid = "PAID",
+}
+
+const status: OrderStatus = "PAID"; // Error: '"PAID"' is not assignable to 'OrderStatus'
+```
+
+That is the main annoyance in practice. Data from an API arrives as plain strings, so
+you end up casting at every boundary.
+
+Numeric enums (`enum Direction { Up, Down }`) auto-number from 0 and also create a
+reverse mapping (`Direction[0] === "Up"`), which is rarely what you want.
+
+### Enums are not just types
+
+An `enum` is one of the few TypeScript features that **emits JavaScript**: an object
+and a function that builds it. Everything else you have seen is erased. Consequences:
+
+- Node's built-in TypeScript stripping cannot run enums, because there is nothing
+  to strip — they need real transformation.
+- `const enum` inlines values but has pitfalls with bundlers and `isolatedModules`.
+  Avoid it.
+
+## The alternative: `as const`
+
+```ts
+const ORDER_STATUS = {
+  Pending: "PENDING",
+  Paid: "PAID",
+  Shipped: "SHIPPED",
+} as const;
+
+type OrderStatus = (typeof ORDER_STATUS)[keyof typeof ORDER_STATUS];
+// "PENDING" | "PAID" | "SHIPPED"
+
+function isFinal(status: OrderStatus): boolean {
+  return status === ORDER_STATUS.Shipped;
+}
+
+isFinal("PAID"); // plain strings are accepted
+isFinal("REFUNDED"); // Error: '"REFUNDED"' is not assignable to 'OrderStatus'
+```
+
+Reading the type from the inside out:
+
+| Piece | Result |
+| ----- | ------ |
+| `as const` | Every value becomes a literal and every property `readonly` |
+| `typeof ORDER_STATUS` | The *type* of the object (`typeof` in a type position) |
+| `keyof ...` | `"Pending" \| "Paid" \| "Shipped"`, the keys |
+| `...[keyof ...]` | Look up each key's value type — a union of the values |
+
+*Constraints, keyof & Indexed Access* later in this level explains each step.
+
+You get a runtime object (iterate it, show it in a dropdown) and a union type from a
+single source of truth, with no emitted enum code.
+
+### Even simpler: an array
+
+When you only need the values:
+
+```ts
+const ROLES = ["admin", "editor", "viewer"] as const;
+
+type Role = (typeof ROLES)[number]; // "admin" | "editor" | "viewer"
+
+function isRole(value: string): value is Role {
+  return (ROLES as readonly string[]).includes(value);
+}
+
+const options = ROLES.map((role) => role.toUpperCase()); // still usable at runtime
+```
+
+## Which should I use?
+
+| | `enum` | `as const` object / array | Union of literals |
+| --- | :---: | :---: | :---: |
+| Accepts plain strings | no | yes | yes |
+| Runtime object to iterate | yes | yes | no |
+| Emits extra JavaScript | yes | no | no |
+| Works with type stripping | no | yes | yes |
+
+**Default to a union of literals.** Add an `as const` object when you also need the
+values at runtime. Use `enum` when an existing codebase or library already does.
+
+## Common mistakes
+
+- **Forgetting `as const`.** Without it, the values widen to `string` and the derived
+  type is just `string`.
+- **Using numeric enums for domain values.** `status: 2` tells you nothing, and
+  serialises as a number.
+- **Mixing both styles in one codebase.** Pick one for new code.
+
+## Practice
+
+Convert this enum into an `as const` object plus a derived `Role` type, then write
+`canDelete(role: Role): boolean` that only allows `Admin`:
+
+```ts
+enum Role {
+  Admin = "ADMIN",
+  Editor = "EDITOR",
+  Viewer = "VIEWER",
+}
+```
+
+Then call `canDelete("ADMIN")` and `canDelete("admin")`. Which compiles, and why?

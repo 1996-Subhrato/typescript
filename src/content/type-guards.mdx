@@ -1,0 +1,138 @@
+# Type Guards & Predicates
+
+## What
+
+A **type guard** is any check that narrows a type. You have used the built-in ones
+(`typeof`, `in`, `instanceof`). A **custom type guard** is a function you write whose
+return type, `value is Type`, tells TypeScript what a `true` result means.
+
+## Syntax
+
+```ts
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function shout(input: unknown): string {
+  if (isString(input)) {
+    return input.toUpperCase(); // input: string
+  }
+  return "";
+}
+```
+
+`value is string` is a **type predicate**. Without it the function returns a plain
+`boolean` and the caller gets no narrowing.
+
+## Real-world example: checking data you do not control
+
+The classic use is validating something `unknown` — an API response, a parsed JSON
+file, a message from a worker.
+
+```ts
+type User = { id: number; name: string };
+
+function isUser(value: unknown): value is User {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "number" &&
+    "name" in value &&
+    typeof value.name === "string"
+  );
+}
+
+function parseUser(text: string): User | null {
+  const data: unknown = JSON.parse(text);
+  return isUser(data) ? data : null;
+}
+```
+
+Read the body top to bottom: each `&&` narrows `value` further. After
+`typeof value === "object" && value !== null`, it is an object; after
+`"id" in value`, TypeScript knows `value.id` exists (typed `unknown`); then `typeof`
+checks its type.
+
+### Guards for discriminated unions
+
+```ts
+type ApiResponse =
+  | { ok: true; data: string[] }
+  | { ok: false; error: string };
+
+function isFailure(response: ApiResponse): response is { ok: false; error: string } {
+  return !response.ok;
+}
+```
+
+Usually a plain `if (!response.ok)` is simpler. Write a named guard when the check is
+reused in several places or is more than one condition.
+
+## Filtering arrays
+
+The most frequent everyday use:
+
+```ts
+const rawNames: (string | undefined)[] = ["Ada", undefined, "Grace"];
+
+const names = rawNames.filter((name): name is string => name !== undefined);
+// string[]
+```
+
+TypeScript 5.5 and later infers the predicate for simple cases like this, so
+`rawNames.filter((name) => name !== undefined)` also gives `string[]`. Write the
+predicate explicitly for anything more complex, or to document intent.
+
+## Assertion functions
+
+An `asserts` signature narrows by **throwing** instead of returning a boolean:
+
+```ts
+function assertIsString(value: unknown): asserts value is string {
+  if (typeof value !== "string") {
+    throw new Error(`Expected string, got ${typeof value}`);
+  }
+}
+
+function normalise(input: unknown): string {
+  assertIsString(input);
+  return input.trim(); // input: string from here down
+}
+```
+
+## Important: TypeScript trusts the predicate
+
+The compiler does not verify that your function body matches its claim.
+
+```ts
+type User = { id: number; name: string };
+type Admin = User & { permissions: string[] };
+
+function isAdmin(user: User): user is Admin {
+  return user.id > 0; // wrong check, compiles perfectly
+}
+```
+
+A wrong guard is worse than none, because it produces confident, incorrect types. Test
+guards, and prefer checking exactly the properties the target type requires.
+
+## Common mistakes
+
+- **Returning `boolean` and expecting narrowing.** Add the `value is T` predicate.
+- **Guards that check too little.** `typeof x === "object"` alone does not prove
+  something is a `User` — and `null` is also `typeof "object"`.
+- **Writing a guard for every type.** Hand-written guards for large shapes are error
+  prone; schema libraries generate them. See *DTOs & Runtime Validation*.
+- **Inverted predicates** (`value is X` that returns true when it is *not* X).
+
+## Practice
+
+```ts
+type ApiError = { code: string; message: string };
+```
+
+Write `isApiError(value: unknown): value is ApiError`. Then use it in a function that
+takes an `unknown` response and returns the error message, or `"ok"` when it is not an
+error. Check that `isApiError(null)` and `isApiError({ code: 1, message: "x" })` both
+return `false`.

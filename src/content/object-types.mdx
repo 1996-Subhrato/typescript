@@ -1,0 +1,137 @@
+# Object Types
+
+## What
+
+An object type describes the **shape** of an object: which properties exist and what
+type each one has.
+
+```ts
+type Product = {
+  id: number;
+  name: string;
+  price: number;
+};
+
+const keyboard: Product = { id: 1, name: "Keyboard", price: 49 };
+```
+
+Names for shapes (`type`, `interface`) get their own topic. Here the focus is what
+goes *inside* the braces.
+
+## Optional properties
+
+`?` marks a property that may be missing. Its type becomes `T | undefined`.
+
+```ts
+type Product = {
+  id: number;
+  name: string;
+  price: number;
+  discount?: number;
+};
+
+const keyboard: Product = { id: 1, name: "Keyboard", price: 49 };
+const mouse: Product = { id: 2, name: "Mouse", price: 25, discount: 5 };
+
+const discount = keyboard.discount; // number | undefined
+const finalPrice = keyboard.price - keyboard.discount; // Error: 'discount' is possibly 'undefined'
+```
+
+```ts
+type Product = { id: number; price: number; discount?: number };
+
+function finalPrice(product: Product): number {
+  return product.price - (product.discount ?? 0);
+}
+```
+
+## Readonly properties
+
+```ts
+type Order = {
+  readonly id: string;
+  total: number;
+};
+
+const order: Order = { id: "ord_1", total: 40 };
+order.total = 45; // fine
+order.id = "ord_2"; // Error: Cannot assign to 'id' because it is a read-only property
+```
+
+`readonly` is **compile-time only** and **shallow**. It blocks reassigning the property,
+not mutating what the property points to:
+
+```ts
+type Order = { readonly id: string; readonly items: string[] };
+
+const order: Order = { id: "ord_1", items: ["kb-01"] };
+order.items.push("ms-01"); // allowed — the array itself is not readonly
+```
+
+## Nested objects
+
+```ts
+type Customer = {
+  id: number;
+  name: string;
+  address: {
+    city: string;
+    country: string;
+    postalCode?: string;
+  };
+};
+
+function shippingLabel(customer: Customer): string {
+  return `${customer.name}, ${customer.address.city}, ${customer.address.country}`;
+}
+```
+
+## Index signatures: objects used as dictionaries
+
+When the keys are not known in advance:
+
+```ts
+type StockByWarehouse = { [warehouse: string]: number };
+
+const stock: StockByWarehouse = { berlin: 12, tokyo: 40 };
+const paris = stock["paris"]; // number | undefined (noUncheckedIndexedAccess)
+```
+
+## Excess property checks
+
+A fresh object literal is checked for properties the type does not declare.
+
+```ts
+type Product = { id: number; name: string; price: number };
+
+const bad: Product = { id: 1, name: "Keyboard", price: 49, color: "black" }; // Error: 'color' does not exist in type 'Product'
+```
+
+This catches typos such as `pirce`. But the check applies only to **literals**. Going
+through a variable bypasses it, because TypeScript is *structural*: extra properties
+are fine as long as the required ones exist.
+
+```ts
+type Product = { id: number; name: string; price: number };
+
+const raw = { id: 1, name: "Keyboard", price: 49, color: "black" };
+const ok: Product = raw; // no error
+```
+
+## Common mistakes
+
+- **Treating `readonly` as runtime immutability.** It does not freeze anything.
+  `Object.freeze` does that, and TypeScript types its result as `Readonly<T>`.
+- **Using `{}` or `Object` as a type.** `{}` means "any non-null value", which is almost
+  never what you meant. Describe the shape.
+- **Optional vs required-but-nullable are different.** `bio?: string` may be absent;
+  `bio: string | null` must be present. APIs distinguish these constantly — see
+  *null & undefined*.
+
+## Practice
+
+Create a `Product` type with `id`, `name`, `price`, and an optional `discount` (a
+percentage from 0 to 100). Then write `finalPrice(product)` that returns the price
+after the discount.
+
+Check: does `finalPrice({ id: 1, name: "Pen", price: 3, discout: 10 })` compile? Why?

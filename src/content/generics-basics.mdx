@@ -1,0 +1,156 @@
+# Generics: The Basics
+
+## What
+
+A generic is a **type parameter**: a placeholder, written `<T>`, that is filled in when
+the function or type is used. It lets one definition work across many types *while
+remembering which one*.
+
+You already use them: `Array<string>`, `Promise<User>`, `Map<number, User>`.
+
+## The problem
+
+```ts
+function firstAny(items: any[]): any {
+  return items[0];
+}
+
+const name = firstAny(["Ada", "Grace"]); // any — the string type was lost
+name.nonsense(); // compiles
+```
+
+`any` gets the function to accept every array, but throws away the connection between
+what goes in and what comes out.
+
+## Generic functions
+
+```ts
+function first<T>(items: T[]): T | undefined {
+  return items[0];
+}
+
+const name = first(["Ada", "Grace"]); // string | undefined
+const id = first([101, 102]); // number | undefined
+```
+
+Read `<T>` as "for some type T, to be worked out from the arguments". `T` is
+**inferred** — you rarely write it explicitly, but you can: `first<string>([...])`.
+
+Several type parameters:
+
+```ts
+function pair<K, V>(key: K, value: V): [K, V] {
+  return [key, value];
+}
+
+const entry = pair("retries", 3); // [string, number]
+```
+
+## Generic interfaces and type aliases
+
+This is where generics earn their keep in application code: reusable wrappers.
+
+```ts
+interface ApiResponse<T> {
+  data: T;
+  status: number;
+  message?: string;
+}
+
+type User = { id: number; name: string };
+type Product = { id: number; name: string; price: number };
+
+const userResponse: ApiResponse<User> = {
+  data: { id: 1, name: "Ada" },
+  status: 200,
+};
+
+const listResponse: ApiResponse<Product[]> = {
+  data: [{ id: 1, name: "Keyboard", price: 49 }],
+  status: 200,
+};
+```
+
+One `ApiResponse` definition, a different `data` type each time.
+
+```ts
+type Nullable<T> = T | null;
+type AsyncResult<T> = Promise<{ ok: true; value: T } | { ok: false; error: string }>;
+
+const middleName: Nullable<string> = null;
+```
+
+## Real-world example: a typed fetch helper
+
+```ts
+type User = { id: number; name: string };
+
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  return (await response.json()) as T;
+}
+
+const users = await getJson<User[]>("/api/users"); // User[]
+```
+
+Be clear about what this does *not* do. `T` is a claim you make at the call site;
+`response.json()` is not validated against it. This is the assertion problem from
+*Type Assertions* in generic clothing. *A Generic API Client* returns to it.
+
+## When you need to write it explicitly
+
+TypeScript infers `T` from arguments. When there is nothing to infer from, say it:
+
+```ts
+const cache = new Map<string, number>();
+const empty: Array<string> = [];
+
+function createStore<T>(): { get(): T | undefined; set(value: T): void } {
+  let current: T | undefined;
+  return {
+    get: () => current,
+    set: (value) => {
+      current = value;
+    },
+  };
+}
+
+const store = createStore<number>();
+store.set(42);
+store.set("42"); // Error: 'string' is not assignable to 'number'
+```
+
+## Common mistakes
+
+**Accessing members of an unconstrained `T`**
+
+```ts
+function getLength<T>(item: T): number {
+  return item.length; // Error: Property 'length' does not exist on type 'T'
+}
+```
+
+`T` could be anything, including a number. You need a *constraint* — the next topic.
+
+**A generic that is not needed**
+
+```ts
+function logId<T>(id: T): void {
+  console.log(id);
+}
+```
+
+If a type parameter appears only once, it relates nothing to anything else. Use the real
+type (or `unknown`) instead. A useful generic connects at least two places: input to
+output, or one parameter to another.
+
+**Naming**: `T`, `K`, `V`, `E` are conventional for simple cases. Use a descriptive name
+(`TItem`, `TResponse`) when there are several or the role is not obvious.
+
+## Practice
+
+1. Write `last<T>(items: readonly T[]): T | undefined`.
+2. Write `PaginatedResponse<T>` with `items: T[]`, `page: number`, `pageSize: number`
+   and `total: number`. Then write `type UserPage = PaginatedResponse<User>`.
+3. Write `mapValues` that takes an array and a function and returns the mapped array,
+   with the input and output types as separate parameters (`TIn`, `TOut`).

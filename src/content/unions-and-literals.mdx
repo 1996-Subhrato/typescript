@@ -1,0 +1,141 @@
+# Unions, Literals & Intersections
+
+## What
+
+- A **union** (`A | B`) is a value that is *one of* several types.
+- A **literal type** is a type with exactly one value: `"paid"`, `42`, `true`.
+- An **intersection** (`A & B`) is a value that is *all of* several types.
+
+Think of unions as **OR** and intersections as **AND**.
+
+## Unions
+
+```ts
+type UserId = string | number;
+
+function getUser(id: UserId): string {
+  return `user:${id}`; // template literals accept both
+}
+
+getUser(101);
+getUser("usr_101");
+getUser(true); // Error: 'boolean' is not assignable to 'string | number'
+```
+
+You can only use what **every** member of the union supports:
+
+```ts
+function printId(id: string | number): string {
+  return id.toUpperCase(); // Error: 'toUpperCase' does not exist on type 'number'
+}
+```
+
+To use `toUpperCase`, first prove it is a string. That process is **narrowing**, the
+next-but-one topic.
+
+## Literal types
+
+A union of literals is how TypeScript models a fixed set of allowed values.
+
+```ts
+type OrderStatus = "pending" | "paid" | "shipped" | "cancelled";
+
+let status: OrderStatus = "pending";
+status = "refunded"; // Error: '"refunded"' is not assignable to 'OrderStatus'
+```
+
+This is the idiomatic replacement for most `enum`s, and it catches typos at compile time
+and gives you autocomplete on the allowed values.
+
+```ts
+type Currency = "USD" | "EUR" | "INR";
+type DiceRoll = 1 | 2 | 3 | 4 | 5 | 6;
+
+function formatMoney(amount: number, currency: Currency): string {
+  return `${currency} ${amount.toFixed(2)}`;
+}
+
+formatMoney(10, "USD");
+formatMoney(10, "usd"); // Error: '"usd"' is not assignable to 'Currency'
+```
+
+### The widening trap
+
+An object property is mutable, so TypeScript widens its literal to `string`.
+
+```ts
+function request(method: "GET" | "POST"): void {}
+
+const config = { method: "GET" };
+request(config.method); // Error: 'string' is not assignable to '"GET" | "POST"'
+```
+
+Three fixes, in order of preference:
+
+```ts
+function request(method: "GET" | "POST"): void {}
+
+// 1. as const — freezes the literal (and makes the property readonly)
+const configA = { method: "GET" } as const;
+request(configA.method);
+
+// 2. annotate the variable
+const configB: { method: "GET" | "POST" } = { method: "GET" };
+request(configB.method);
+
+// 3. assert only that one value
+const configC = { method: "GET" as const };
+request(configC.method);
+```
+
+## Intersections
+
+Combine shapes, such as adding audit fields to anything:
+
+```ts
+type Timestamps = { createdAt: Date; updatedAt: Date };
+type Product = { id: number; name: string };
+
+type ProductRecord = Product & Timestamps;
+
+const record: ProductRecord = {
+  id: 1,
+  name: "Keyboard",
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+```
+
+Intersecting primitives that cannot overlap gives `never`: `string & number` is a type
+with no possible values.
+
+## Real-world example
+
+```ts
+type SortDirection = "asc" | "desc";
+type SortField = "name" | "price" | "createdAt";
+
+type ProductQuery = {
+  search?: string;
+  sortBy: SortField;
+  direction: SortDirection;
+  page: number;
+};
+
+const query: ProductQuery = { sortBy: "price", direction: "asc", page: 1 };
+```
+
+## Common mistakes
+
+- **Using `string` for a closed set of values.** If only four statuses exist, say so.
+- **Thinking `A | B` has the members of both.** It has the members they *share*. `A & B`
+  is the one that has everything.
+- **Hitting the widening trap** and fixing it with a cast instead of `as const`.
+
+## Practice
+
+1. Define `Role = "admin" | "editor" | "viewer"` and a function `canEdit(role: Role)`.
+   Confirm `canEdit("owner")` fails.
+2. Define `Auditable = { createdBy: string; createdAt: Date }` and make an
+   `AuditedOrder` by intersecting it with an `Order` type of your own.
+3. What is the type of `x` after `const x = Math.random() > 0.5 ? "yes" : "no";`?

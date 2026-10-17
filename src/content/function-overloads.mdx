@@ -1,0 +1,105 @@
+# Function Overloads
+
+## What
+
+Overloads let one function accept different argument shapes and return a **different
+type depending on which shape was used**. You write several *signatures* followed by
+one *implementation*.
+
+## Syntax
+
+```ts
+function parseInput(input: string): number;
+function parseInput(input: string[]): number[];
+function parseInput(input: string | string[]): number | number[] {
+  return typeof input === "string" ? Number(input) : input.map(Number);
+}
+
+const one = parseInput("42"); // number
+const many = parseInput(["1", "2"]); // number[]
+parseInput(5); // Error: No overload matches this call
+```
+
+Two things to notice:
+
+1. The **implementation signature is invisible** to callers. Only the overload lines
+   are callable — `parseInput(5)` fails even though the implementation could in theory
+   cope.
+2. The implementation must be compatible with *all* overloads, so its types are wide.
+
+## Real-world example
+
+A helper that returns a single element or a list depending on a flag is a typical case:
+
+```ts
+type Product = { id: number; name: string };
+
+const products: Product[] = [{ id: 1, name: "Keyboard" }];
+
+function findProducts(id: number): Product | undefined;
+function findProducts(ids: number[]): Product[];
+function findProducts(query: number | number[]): Product | undefined | Product[] {
+  if (Array.isArray(query)) {
+    return products.filter((product) => query.includes(product.id));
+  }
+  return products.find((product) => product.id === query);
+}
+
+const single = findProducts(1); // Product | undefined
+const several = findProducts([1, 2]); // Product[]
+```
+
+Without overloads the return type would be `Product | undefined | Product[]`, and every
+caller would have to narrow a result they already know the shape of.
+
+## Order matters
+
+TypeScript tries overloads **top to bottom** and picks the first match. Put the most
+specific signature first; a broad one above it will swallow every call.
+
+## Prefer simpler alternatives
+
+Overloads are often not needed:
+
+**Optional parameter** — when only the argument count differs.
+
+```ts
+type User = { name: string; email?: string };
+
+function createUser(name: string, email?: string): User {
+  return { name, email };
+}
+```
+
+**Union parameter** — when the return type is the same.
+
+```ts
+function formatId(id: string | number): string {
+  return String(id).padStart(6, "0");
+}
+```
+
+**Generics** — when the return type follows from the input type. These replace most
+overloads in practice and are the next-but-one topic.
+
+Reach for overloads when the *relationship* between input and output type is
+specific and there is no cleaner way to express it.
+
+## Common mistakes
+
+- **Forgetting the implementation.** Overload signatures alone have no body:
+  `Function implementation is missing`.
+- **Expecting the implementation signature to be callable.** It is not.
+- **Overloading just to document different parameter names.** Use a union or
+  optional parameters.
+- **Putting a broad overload first.**
+
+## Practice
+
+Write `toArray`:
+
+- given a `string`, return `string[]` containing only that string
+- given a `string[]`, return it unchanged
+
+Then ask yourself: could a generic function `toArray<T>(value: T | T[]): T[]` replace
+both overloads?

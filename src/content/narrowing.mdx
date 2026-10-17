@@ -1,0 +1,175 @@
+# Narrowing
+
+## What
+
+**Narrowing** is TypeScript refining a wide type (a union) to a narrower one inside a
+code path where it can prove which case you are in. It is the reason unions are usable
+at all, and it mostly works without you writing any TypeScript — only normal JavaScript
+checks.
+
+```ts
+function formatId(id: string | number): string {
+  if (typeof id === "string") {
+    return id.toUpperCase(); // id: string
+  }
+  return id.toFixed(0); // id: number — the string case already returned
+}
+```
+
+## The narrowing checks
+
+### `typeof`
+
+Narrows primitives: `"string"`, `"number"`, `"boolean"`, `"bigint"`, `"symbol"`,
+`"undefined"`, `"function"`, `"object"`.
+
+```ts
+function double(value: string | number): string | number {
+  return typeof value === "number" ? value * 2 : value.repeat(2);
+}
+```
+
+### Truthiness
+
+```ts
+function greet(name: string | undefined): string {
+  if (name) {
+    return `Hello, ${name}`; // name: string
+  }
+  return "Hello, guest";
+}
+```
+
+Careful: truthiness also removes `""`, `0` and `NaN`. See *Common mistakes*.
+
+### Equality
+
+```ts
+type Status = "pending" | "paid" | "shipped";
+
+function isFinished(status: Status): boolean {
+  if (status === "shipped") {
+    return true; // status: "shipped"
+  }
+  return false; // status: "pending" | "paid"
+}
+```
+
+### `in`
+
+Checks whether a property exists, which narrows between object shapes.
+
+```ts
+type Card = { cardNumber: string };
+type BankTransfer = { iban: string };
+
+function describe(payment: Card | BankTransfer): string {
+  if ("cardNumber" in payment) {
+    return `Card ending ${payment.cardNumber.slice(-4)}`; // Card
+  }
+  return `IBAN ${payment.iban}`; // BankTransfer
+}
+```
+
+### `instanceof`
+
+Narrows to a class instance.
+
+```ts
+function toMessage(error: Error | string): string {
+  if (error instanceof Error) {
+    return error.message; // narrowed: the Error class
+  }
+  return error; // string
+}
+
+function formatDate(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : value;
+}
+```
+
+## Control-flow analysis
+
+TypeScript follows your code's flow — `if`, `return`, `throw`, `switch`, assignments —
+and tracks the type at each point.
+
+```ts
+function getLength(value: string | string[]): number {
+  if (typeof value === "string") {
+    return value.length;
+  }
+  return value.length; // value: string[]
+}
+```
+
+Assignment narrows too. The *declared* type stays wide, but the *current* type is narrow:
+
+```ts
+let id: string | number;
+id = "usr_1";
+id.toUpperCase(); // fine: assigned a string
+```
+
+### Early returns keep functions flat
+
+```ts
+type User = { name: string; email?: string };
+
+function sendWelcome(user: User): string {
+  if (!user.email) {
+    throw new Error(`${user.name} has no email`);
+  }
+  return `Sending to ${user.email.toLowerCase()}`; // email: string from here on
+}
+```
+
+## Common mistakes
+
+**Truthiness removes valid values**
+
+```ts
+function describeStock(quantity: number | undefined): string {
+  if (!quantity) return "unknown"; // bug: 0 is a real quantity but is falsy
+  return `${quantity} in stock`;
+}
+```
+
+Compare against what you actually mean: `quantity === undefined`.
+
+**Narrowing does not survive into callbacks**
+
+TypeScript cannot know the property will not change before the callback runs.
+
+```ts
+type Draft = { title?: string };
+
+function logLater(draft: Draft): void {
+  if (!draft.title) return;
+  setTimeout(() => {
+    console.log(draft.title.toUpperCase()); // Error: 'draft.title' is possibly 'undefined'
+  }, 100);
+}
+```
+
+Copy the narrowed value into a `const` first, then use that.
+
+```ts
+type Draft = { title?: string };
+
+function logLater(draft: Draft): void {
+  const title = draft.title;
+  if (!title) return;
+  setTimeout(() => {
+    console.log(title.toUpperCase()); // title: string
+  }, 100);
+}
+```
+
+## Practice
+
+Write `describe(value: string | number | string[] | Date | null): string` that returns:
+the string itself, `"number: <n>"`, the array joined with commas, an ISO date, or
+`"nothing"`. Use a different narrowing check for each branch.
+
+Discriminated unions and custom type guards are the next level of this idea. They come
+in *Practical TypeScript*.

@@ -1,0 +1,154 @@
+# Type Assertions
+
+## What
+
+An assertion tells the compiler: *"I know this value's type better than you do."*
+The compiler believes you. **Nothing is checked at runtime** — if you are wrong, the
+bug is yours.
+
+```ts
+const input = document.getElementById("email") as HTMLInputElement;
+input.value = "ada@example.com";
+```
+
+`getElementById` returns `HTMLElement | null`; without the assertion `.value` does not
+exist. The assertion is correct only if the element really is an `<input>`.
+
+## `as`: widening the claim
+
+Assertions can only move to a *related* type — narrower or wider. Unrelated types are
+rejected:
+
+```ts
+const count = "5" as number; // Error: Conversion of type 'string' to type 'number' may be a mistake
+```
+
+The escape hatch is a double assertion through `unknown`: `value as unknown as Target`.
+If you ever write it, treat it as a sign the model is wrong.
+
+## `!`: the non-null assertion
+
+Removes `null` and `undefined` from a type.
+
+```ts
+const app = document.querySelector("#app")!; // type: Element, not Element | null
+```
+
+It is `as` for nullability — and equally unchecked.
+
+```ts
+type User = { id: number; name: string };
+
+function findUser(users: User[], id: number): User | undefined {
+  return users.find((user) => user.id === id);
+}
+
+const name = findUser([], 1)!.name; // compiles, throws at runtime
+```
+
+## Prefer proving over asserting
+
+```ts
+const input = document.getElementById("email");
+
+if (input instanceof HTMLInputElement) {
+  input.value = "ada@example.com"; // narrowed: no assertion needed
+}
+```
+
+```ts
+type User = { id: number; name: string };
+
+function findUser(users: User[], id: number): User | undefined {
+  return users.find((user) => user.id === id);
+}
+
+function userName(users: User[], id: number): string {
+  const user = findUser(users, id);
+  if (!user) throw new Error(`User ${id} not found`);
+  return user.name;
+}
+```
+
+Both versions are the same length. One fails clearly at the point of the problem; the
+other fails somewhere later with `undefined`.
+
+## `as const`
+
+A different kind of assertion — it narrows to the most specific literal type and makes
+everything `readonly`. It is safe because it adds *no* new claim about the data.
+
+```ts
+const point = [10, 20] as const; // readonly [10, 20]
+const config = { retries: 3, mode: "strict" } as const; // { readonly retries: 3; readonly mode: "strict" }
+```
+
+## `satisfies`: check without widening
+
+`satisfies` verifies a value matches a type but **keeps the more precise inferred
+type**. This site's own registry uses it.
+
+```ts
+type Endpoint = { method: "GET" | "POST"; url: string };
+
+const getUsers = { method: "GET", url: "/users" } satisfies Endpoint;
+const annotated: Endpoint = { method: "GET", url: "/users" };
+
+const a: "GET" = getUsers.method; // OK — precise type preserved
+const b: "GET" = annotated.method; // Error: '"GET" | "POST"' is not assignable to '"GET"'
+```
+
+It also catches typos, because the check is a real excess-property check:
+
+```ts
+type ThemeColors = { primary: string; danger: string };
+
+const colors = {
+  primary: "#2563eb",
+  danger: "#dc2626",
+  warnng: "#f59e0b", // Error: Object literal may only specify known properties
+} satisfies ThemeColors;
+```
+
+## Real-world: API data
+
+The most common wrongful assertion:
+
+```ts
+type User = { id: number; name: string };
+
+async function loadUser(res: Response): Promise<User> {
+  return (await res.json()) as User; // compiles; trusts the server completely
+}
+
+const user = {} as User; // compiles; every field is undefined at runtime
+```
+
+`{} as User` is how bugs get promoted to "looks fine". Runtime validation is covered in
+*unknown at the Boundary*.
+
+## When an assertion is fine
+
+- A DOM lookup where you control the markup (and ideally you checked first).
+- Test code, where you construct partial fixtures.
+- You have information the compiler cannot get, **and you add a comment saying so**.
+
+## Common mistakes
+
+- **Asserting to silence an error.** The error was telling you something.
+- **`as any`.** Switches checking off entirely; `as unknown` is nearly always enough.
+- **Using `!` on values that really can be missing.**
+- **Confusing `as` (assert) with `:` (annotate).** `const x: T = value` is checked;
+  `const x = value as T` is not.
+
+## Practice
+
+Rewrite each of these without `as` or `!`:
+
+```ts
+const form = document.querySelector("form") as HTMLFormElement;
+const first = ["a", "b"][0]!;
+```
+
+Then explain: why is `{ method: "GET" } as Endpoint` weaker than
+`{ method: "GET" } satisfies Endpoint`?

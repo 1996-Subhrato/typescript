@@ -1,0 +1,166 @@
+# Constraints, keyof & Indexed Access
+
+## What
+
+Plain generics accept *any* type. **Constraints** narrow what `T` may be, which in turn
+lets you use `T`'s members. Together with `keyof`, `typeof` and indexed access types,
+they are the toolkit every advanced type is built from.
+
+## Constraints with `extends`
+
+```ts
+function getLength<T extends { length: number }>(item: T): number {
+  return item.length;
+}
+
+getLength("hello"); // strings have length
+getLength([1, 2, 3]); // arrays have length
+getLength(42); // Error: 'number' is not assignable to '{ length: number }'
+```
+
+`extends` here means "is assignable to", not class inheritance. The constraint is checked
+at each call and is what makes `item.length` legal inside.
+
+A constraint keeps the **specific** type, unlike a plain parameter type:
+
+```ts
+type Entity = { id: number };
+
+function withId<T extends Entity>(item: T): T {
+  console.log(item.id);
+  return item; // still the full specific type, not just Entity
+}
+
+const product = withId({ id: 1, name: "Keyboard" }); // { id: number; name: string }
+```
+
+## `keyof`
+
+Produces a union of an object type's keys.
+
+```ts
+type User = { id: number; name: string; email: string };
+
+type UserKey = keyof User; // "id" | "name" | "email"
+```
+
+## Indexed access types: `T[K]`
+
+Looks up the type of a property.
+
+```ts
+type User = { id: number; name: string; email: string };
+
+type EmailType = User["email"]; // string
+type IdOrName = User["id" | "name"]; // number | string
+
+type Roles = string[];
+type Role = Roles[number]; // string — the element type of any array
+```
+
+## `keyof` + indexed access + generics
+
+The canonical combination: a function that reads a property, typed precisely.
+
+```ts
+function getProperty<T, K extends keyof T>(obj: T, key: K): T[K] {
+  return obj[key];
+}
+
+type User = { id: number; name: string; email: string };
+const user: User = { id: 1, name: "Ada", email: "ada@example.com" };
+
+const name = getProperty(user, "name"); // string
+const id = getProperty(user, "id"); // number
+getProperty(user, "age"); // Error: '"age"' is not assignable to '"id" | "name" | "email"'
+```
+
+`K extends keyof T` limits `key` to real property names of *this* `obj`, and the return
+type `T[K]` follows the specific key chosen. No `any`, no casts, full autocomplete.
+
+### Real-world example: sorting by a field
+
+```ts
+type Product = { id: number; name: string; price: number };
+
+function sortBy<T, K extends keyof T>(items: readonly T[], key: K): T[] {
+  return [...items].sort((a, b) => (a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0));
+}
+
+const products: Product[] = [
+  { id: 1, name: "Keyboard", price: 49 },
+  { id: 2, name: "Mouse", price: 25 },
+];
+
+const byPrice = sortBy(products, "price");
+sortBy(products, "color"); // Error: '"color"' is not assignable to 'keyof Product'
+```
+
+## `typeof` in a type position
+
+At runtime `typeof` produces a string. In a *type* position it extracts the type of a
+value. This avoids writing a type that duplicates an object you already have.
+
+```ts
+const defaultSettings = {
+  theme: "dark",
+  pageSize: 20,
+  notifications: true,
+};
+
+type Settings = typeof defaultSettings;
+// { theme: string; pageSize: number; notifications: boolean }
+
+function applySettings(overrides: Partial<Settings>): Settings {
+  return { ...defaultSettings, ...overrides };
+}
+```
+
+(`Partial<T>` makes every property optional; it is the first utility type in the next
+level.)
+
+Combined with `as const` and `keyof`, this derives a union from data:
+
+```ts
+const COLORS = { red: "#f00", green: "#0f0", blue: "#00f" } as const;
+
+type ColorName = keyof typeof COLORS; // "red" | "green" | "blue"
+type ColorValue = (typeof COLORS)[ColorName]; // "#f00" | "#0f0" | "#00f"
+```
+
+Read `keyof typeof COLORS` right to left: take the type of `COLORS`, then its keys.
+
+## Generic defaults
+
+A type parameter can have a default, used when none is given or inferred.
+
+```ts
+interface ApiResponse<T = unknown> {
+  data: T;
+  status: number;
+}
+
+const untyped: ApiResponse = { data: "anything", status: 200 }; // T is unknown
+const typed: ApiResponse<string[]> = { data: ["a"], status: 200 };
+```
+
+A default must come after any parameter without one, and it can itself refer to earlier
+parameters.
+
+## Common mistakes
+
+- **`K extends string` instead of `K extends keyof T`.** The former allows any string,
+  and indexing `obj[key]` fails.
+- **Over-constraining.** `T extends Product` is wrong for a function that only reads `id`;
+  use `T extends { id: number }`. Ask for the minimum you need.
+- **Reading `extends` as inheritance.** In a constraint it means *assignable to*.
+- **Forgetting that `keyof` on a type with an index signature includes `string | number`.**
+
+## Practice
+
+1. Write `pluck<T, K extends keyof T>(items: T[], key: K): T[K][]` and use it to get all
+   `name`s from a `User[]`.
+2. Write `groupById<T extends { id: number }>(items: T[])` returning an object whose
+   keys are ids. What does it return when the same `id` appears twice?
+3. Given `const ROLES = ["admin", "editor"] as const`, derive `type Role` without writing
+   the strings again.

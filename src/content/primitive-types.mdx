@@ -1,0 +1,81 @@
+# Primitive Types
+
+## What
+
+The building blocks every other type is made from.
+
+| Type | Example | Notes |
+| ---- | ------- | ----- |
+| `string` | `"ord_1042"` | |
+| `number` | `19.99`, `3`, `NaN` | One type for integers *and* floats |
+| `boolean` | `true` | |
+| `bigint` | `9007199254740993n` | Needs `target` ES2020+ |
+| `symbol` | `Symbol("id")` | Rare in application code |
+| `null` / `undefined` | | Covered in their own topic |
+
+```ts
+const orderId: string = "ord_1042";
+const quantity: number = 3;
+const unitPrice: number = 19.99;
+const isPaid: boolean = false;
+const fileSize: bigint = 9007199254740993n;
+```
+
+## Always lowercase
+
+`String`, `Number` and `Boolean` (capitalised) are JavaScript's *wrapper objects*, not the
+primitives. You will almost never want them.
+
+```ts
+function shout(text: String): string {
+  return text; // Error: 'string' is assignable to 'String', but not the reverse
+}
+```
+
+## `object` and friends
+
+`object` means "any non-primitive". It is rarely useful on its own, because you cannot
+read any property from it. Prefer a real shape (next topics).
+
+```ts
+function describe(payload: object): string {
+  return payload.id; // Error: Property 'id' does not exist on type 'object'
+}
+```
+
+## Real-world example: form input
+
+HTML inputs always give you strings. TypeScript will not let you forget.
+
+```ts
+const quantity = "3"; // from <input type="number">, still a string
+const total = quantity * 10; // Error: arithmetic needs a number
+```
+
+```ts
+function parseQuantity(raw: string): number {
+  return Number(raw);
+}
+
+const total = parseQuantity("3") * 10; // 30
+```
+
+In JavaScript the first version silently works through coercion. In TypeScript it is
+a compile error, which pushes the conversion to one explicit, visible place.
+
+## Common mistakes
+
+- **Using `Number` / `String` as types.** Always `number` / `string`.
+- **Expecting `number` to reject `NaN` or decimals.** It cannot — both are valid
+  `number` values. Money in floating point is a *design* problem, not a typing one:
+  store integer cents, or use a decimal library.
+- **Mixing `number` and `bigint`.** `1n + 1` is a compile error, as it is at runtime.
+
+## Practice
+
+Write `formatPrice(cents: number, currency: string): string`, so that
+`formatPrice(1999, "USD")` returns `"USD 19.99"`.
+
+Then think about it: what should `parseQuantity("abc")` return? `number` is not
+quite honest, because `Number("abc")` is `NaN`. Hold that thought — the
+*null & undefined* topic gives you the tools to answer it properly.

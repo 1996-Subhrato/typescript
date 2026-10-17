@@ -1,0 +1,226 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --surface: #f7f7f8;
+  --border: #e5e5e5;
+  --muted: #6b7280;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --surface: #141416;
+    --border: #262629;
+    --muted: #9ca3af;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+html {
+  /* Headings sit below the sticky header when jumped to from the TOC. */
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Rendered MDX                                                               */
+/* -------------------------------------------------------------------------- */
+
+.prose {
+  line-height: 1.7;
+}
+
+.prose h1 {
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  margin-bottom: 1.5rem;
+}
+
+.prose h2 {
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin-top: 2.75rem;
+  margin-bottom: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+.prose h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-top: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose p {
+  margin-bottom: 1.1rem;
+}
+
+.prose ul,
+.prose ol {
+  margin-bottom: 1.1rem;
+  padding-left: 1.3rem;
+}
+
+.prose ul {
+  list-style: disc;
+}
+
+.prose ol {
+  list-style: decimal;
+}
+
+.prose li {
+  margin-bottom: 0.35rem;
+}
+
+.prose strong {
+  font-weight: 600;
+}
+
+.prose em {
+  font-style: italic;
+}
+
+.prose a {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .prose a {
+    color: #60a5fa;
+  }
+}
+
+.prose blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 1rem;
+  color: var(--muted);
+  margin-bottom: 1.1rem;
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2.5rem 0;
+}
+
+/* Tables come from remark-gfm */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin-bottom: 1.25rem;
+  display: block;
+  overflow-x: auto;
+}
+
+.prose th,
+.prose td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.prose th {
+  background: var(--surface);
+  font-weight: 600;
+}
+
+/* Inline code — not code inside a highlighted block */
+.prose :not(pre) > code {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.85em;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.3rem;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Code blocks                                                                */
+/* -------------------------------------------------------------------------- */
+
+/*
+  rehype-pretty-code wraps every block in <figure data-rehype-pretty-code-figure>,
+  and emits <figcaption data-rehype-pretty-code-title> when the fence carries a
+  title, e.g.  ```ts title="src/lib/api.ts"
+*/
+.prose figure[data-rehype-pretty-code-figure] {
+  margin-bottom: 1.25rem;
+}
+
+.prose figcaption[data-rehype-pretty-code-title] {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.75rem;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 0.5rem 0.5rem 0 0;
+  padding: 0.4rem 0.85rem;
+}
+
+.prose figcaption[data-rehype-pretty-code-title] + div > pre {
+  border-radius: 0 0 0.5rem 0.5rem;
+}
+
+.prose pre {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.83rem;
+  line-height: 1.65;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+}
+
+.prose pre code {
+  display: grid; /* one row per line, so line highlighting can span full width */
+}
+
+/* Lines marked for emphasis:  ```ts {2,5-7} */
+.prose pre code [data-highlighted-line] {
+  background: rgba(37, 99, 235, 0.09);
+  border-left: 2px solid #2563eb;
+  margin-left: -1rem;
+  margin-right: -1rem;
+  padding-left: calc(1rem - 2px);
+  padding-right: 1rem;
+}
+
+/*
+  rehype-pretty-code emits BOTH themes as CSS variables on every token so the
+  page can switch without re-highlighting. `keepBackground: false` in
+  next.config.ts is why the surrounding <pre> uses our own background above.
+*/
+code[data-theme*=" "],
+code[data-theme*=" "] span {
+  color: var(--shiki-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  code[data-theme*=" "],
+  code[data-theme*=" "] span {
+    color: var(--shiki-dark);
+  }
+}
