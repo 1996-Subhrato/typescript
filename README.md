@@ -54,6 +54,10 @@ whole course. It is a separate section at `/capstone`, not a registry level.
 ## Features
 
 - **Registry-driven navigation**: one typed source of truth for levels, order and status
+- **Light and dark themes** with a header toggle: follows the operating system until you choose, remembers
+  the choice, and applies it before the first paint so there is no flash
+- **Responsive design**: a landing page, a pinned sidebar and table of contents on desktop, and a menu
+  drawer on phones
 - **Sidebar** with active-link highlighting, and a **mobile drawer**
 - **Full-text search** (`Ctrl/Cmd + K`) over titles, headings and prose, including inline terms like
   `keyof` and error codes like `TS2345`; results jump to the matching section
@@ -101,7 +105,7 @@ Then open <http://localhost:3000>.
 | `npm run lint` | Run ESLint |
 | `npm run typecheck` | Generate Next's route types, then run `tsc --noEmit` |
 | `npm run check:content` | Compile every code sample in the docs |
-| `npm test` | Unit tests for search, exercises and the capstone page list (Node's built-in test runner) |
+| `npm test` | Unit tests for search, exercises, the capstone page list and the theme script (Node's built-in test runner) |
 | `npm run check:links` | Verify cross-references between topics (add `-- --fix` to turn them into links) |
 | `npm run check:pages` | Smoke-test every rendered page (needs a running server) |
 
@@ -163,20 +167,21 @@ src/
 ├── app/
 │   ├── layout.tsx               # Root layout, fonts, metadata, header
 │   ├── page.tsx                 # Roadmap index with progress
-│   ├── globals.css              # Prose and code-block styling
+│   ├── globals.css              # Design tokens (light/dark), prose and code-block styling
 │   ├── docs/
 │   │   ├── layout.tsx           # Sidebar shell for all topic pages
 │   │   └── [slug]/page.tsx      # Renders one MDX topic, TOC, prev/next
 │   ├── capstone/                # /capstone and /capstone/[step]
 │   ├── exercises/page.tsx       # Every Practice exercise, with a progress tracker
 │   └── search-index.json/       # Static full-text search index
-├── components/                  # SiteHeader, Sidebar, MobileNav, Search,
-│                                # TableOfContents, PrevNextNav, CodeBlock
+├── components/                  # SiteHeader, SiteFooter, NavLinks, ThemeToggle, Sidebar, MobileNav,
+│                                # Search, TableOfContents, PrevNextNav, CodeBlock, ...
 ├── content/                     # One .mdx file per topic slug
 ├── capstone/                    # The eight capstone pages (overview + seven steps)
 ├── lib/
 │   ├── registry.ts              # Source of truth: levels, topics, order, status
 │   ├── capstone.ts              # Typed list of capstone pages
+│   ├── theme.ts                 # Theme storage and the pre-paint boot script
 │   ├── docs.ts                  # Derived helpers (safe for client components)
 │   └── toc.ts                   # Heading parser (server-only)
 ├── types/docs.ts                # Navigation model types

@@ -277,6 +277,33 @@ project mode), `aab1efb` (capstone pages), `2831c5e` (capstone site integration)
 `check:pages` -> 64 topic pages + 8 capstone pages OK, search and exercises OK · browser spot-check of `/capstone/04-client` and a
 search for a capstone term.
 
+### UI polish pass (after Phase 10) ✅
+
+Requested by the user as "work on the UI and make it professional". No content or behaviour changes; presentation, navigation and
+accessibility only.
+
+- **Design tokens.** `globals.css` defines every colour once (`--c-bg`, `--c-surface`, `--c-line`, `--c-muted`, `--c-accent`, ...) for light
+  and dark, exposed to Tailwind as `bg-bg`, `text-muted`, `border-line`, `text-accent`, and so on. **Components no longer use `dark:`
+  classes at all**; the theme is decided in one place.
+- **Theme toggle.** Follows the OS until the reader chooses; the choice is stored (`localStorage`) and applied by an inline boot script in
+  `<head>` before first paint (`src/lib/theme.ts`, `ThemeToggle.tsx`), per the bundled Next.js guide
+  `02-guides/preventing-flash-before-hydration.md`. `<html>` has `suppressHydrationWarning`. Dev Strict Mode resets `<html>` attributes, so the
+  toggle re-applies the stored value in `useLayoutEffect`. Unit-tested (`scripts/theme.test.mts`, 5 tests).
+- **Landing page** (hero, stats, feature cards, curriculum cards, capstone call to action), **header** (brand mark, active-section links,
+  search button, theme toggle), **footer**, **404 page**, skip-to-content link, `<main>` landmark in the root layout, global focus ring,
+  thin scrollbars, `viewport.themeColor`.
+- **Docs pages.** "Topic N of M" eyebrow, stronger type scale, ruled `h2`s, blockquotes styled as callouts, rounded tables and code blocks,
+  copy button always visible on touch screens, sidebar scrolls the current topic into view, shared `PrevNextCard` for topics and capstone.
+- **Bug fixed (pre-existing):** the sticky header used `backdrop-blur`, and `backdrop-filter` makes the element the containing block for
+  `position: fixed` descendants, so the mobile menu and search overlay were being sized to the 56px header. The blur now lives on its own
+  layer. The mobile menu also gained the site links (they were hidden below `sm`) and a pinned header with a close button.
+
+**Verification:** `typecheck` · `lint` · `npm test` -> 43 tests · `check:content` · `check:links` · `build` · `check:pages` (64 + 8 pages, search,
+exercises) · browser: home, docs, capstone, exercises, search modal in dark and light, mobile (375px, no horizontal overflow), toggle persistence,
+no console hydration errors.
+
+**Not verified:** TOC scroll-spy (still unseen), and print styles (not done).
+
 ---
 
 ## Pending Phases
@@ -292,7 +319,6 @@ version: `src/lib/registry.ts`.
 
 Nothing is scheduled. Optional polish that was considered and NOT done (do only if the user asks):
 
-- dark-mode toggle (the site follows the OS setting);
 - a per-page "last verified with TypeScript X" note;
 - print styles;
 - an archive pass on this file's per-phase detail (it is long; the decisions and Authoring Reference are the parts worth keeping).
@@ -469,6 +495,13 @@ show an idiomatic solution. `/exercises` collects all 165 exercises with a progr
 36. **Multi-file code on a page is compiled as one project.** *(Phase 10)* A fence with `title="src/..."` is a file of the capstone project;
     the gate writes them all out and compiles them together, so the pages cannot show code that does not build and each file appears once.
 
+37. **The theme lives in tokens, not in `dark:` classes.** *(UI pass)* Colours are CSS variables that switch on `prefers-color-scheme` and on
+    `<html data-theme>`; components use token utilities (`bg-surface`, `text-muted`). Do not reintroduce `dark:` utilities: Tailwind's
+    `dark:` follows the OS media query and would ignore the toggle.
+
+38. **Never put `backdrop-filter` (or `transform`, `filter`) on an ancestor of a `position: fixed` overlay.** *(UI pass)* It becomes the
+    containing block and clips the overlay. The header's blur is a separate absolutely positioned layer for this reason.
+
 ---
 
 ## Project Architecture
@@ -588,3 +621,4 @@ documentation pass updated `README.md` (capstone, scripts, structure), `ROADMAP.
 | 2026-10-17 | - | Tooling: per-block compiler options via `// @option: value` (mutation-tested). Commit `152cb6a`. |
 | 2026-10-17 | 9 | 10 Config + Professional topics; every config claim measured on TS 5.9.3; error messages captured from real runs; **all 64 topics published**. |
 | 2026-10-17 | 10 | Cross-reference checker + links; full-text search; exercises page (165) with progress tracker; gate project mode; **capstone "The Orders Desk"** (8 pages, verified project) served at `/capstone` with navigation, search and checks. **All phases complete.** |
+| 2026-10-18 | UI | Professional UI pass: design tokens, light/dark toggle without flash, landing page, header/footer, 404, docs typography and callouts, mobile drawer; fixed a fixed-position overlay bug caused by backdrop-filter. |
