@@ -1,40 +1,134 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --surface: #f7f7f8;
-  --border: #e5e5e5;
-  --muted: #6b7280;
-}
+/*
+  Design tokens.
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  Every colour in the UI comes from one of these variables, so a component never says
+  "dark:" -- the theme is decided here, once. The theme is chosen in this order:
+
+    1. an explicit choice, stored by the toggle as  <html data-theme="light|dark">
+    2. otherwise the operating system's preference (prefers-color-scheme)
+
+  Light is the base. The dark values appear twice (system dark, and explicit dark) because
+  CSS has no way to share one block between a media query and an attribute selector.
+*/
+:root {
+  color-scheme: light;
+
+  --c-bg: #ffffff;
+  --c-fg: #0f172a;
+  --c-surface: #f6f8fa;
+  --c-surface-2: #edf1f5;
+  --c-line: #e2e8f0;
+  --c-line-strong: #cbd5e1;
+  --c-muted: #475569;
+  --c-subtle: #64748b;
+  --c-accent: #2563b8;
+  --c-accent-soft: rgba(37, 99, 184, 0.09);
+  --c-accent-solid: #2563b8;
+  --c-accent-solid-fg: #ffffff;
+  --c-glow: rgba(49, 120, 198, 0.16);
+  --c-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 24px -12px rgba(15, 23, 42, 0.12);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-    --surface: #141416;
-    --border: #262629;
-    --muted: #9ca3af;
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --c-bg: #0b0d11;
+    --c-fg: #e7eaf0;
+    --c-surface: #12151b;
+    --c-surface-2: #1a1e26;
+    --c-line: #222731;
+    --c-line-strong: #343b49;
+    --c-muted: #a1a9b6;
+    --c-subtle: #7e8796;
+    --c-accent: #6cb0f5;
+    --c-accent-soft: rgba(108, 176, 245, 0.13);
+    --c-accent-solid: #3178c6;
+    --c-accent-solid-fg: #ffffff;
+    --c-glow: rgba(49, 120, 198, 0.22);
+    --c-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -12px rgba(0, 0, 0, 0.6);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --c-bg: #0b0d11;
+  --c-fg: #e7eaf0;
+  --c-surface: #12151b;
+  --c-surface-2: #1a1e26;
+  --c-line: #222731;
+  --c-line-strong: #343b49;
+  --c-muted: #a1a9b6;
+  --c-subtle: #7e8796;
+  --c-accent: #6cb0f5;
+  --c-accent-soft: rgba(108, 176, 245, 0.13);
+  --c-accent-solid: #3178c6;
+  --c-accent-solid-fg: #ffffff;
+  --c-glow: rgba(49, 120, 198, 0.22);
+  --c-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+}
+
+/* Exposes the tokens as Tailwind utilities: bg-bg, text-fg, border-line, text-accent, ... */
+@theme inline {
+  --color-bg: var(--c-bg);
+  --color-fg: var(--c-fg);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-line: var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+  --color-muted: var(--c-muted);
+  --color-subtle: var(--c-subtle);
+  --color-accent: var(--c-accent);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-accent-solid: var(--c-accent-solid);
+  --color-accent-solid-fg: var(--c-accent-solid-fg);
+  --shadow-card: var(--c-shadow);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 html {
   /* Headings sit below the sticky header when jumped to from the TOC. */
   scroll-behavior: smooth;
   scroll-padding-top: 5rem;
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--c-accent-soft);
+}
+
+/* One consistent, visible keyboard focus ring everywhere. */
+:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+/* Quiet, thin scrollbars (the default ones are heavy next to a sidebar). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-line-strong) transparent;
+}
+
+kbd {
+  font-family: var(--font-geist-mono), monospace;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -42,40 +136,55 @@ html {
 /* -------------------------------------------------------------------------- */
 
 .prose {
-  line-height: 1.7;
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--c-fg);
+}
+
+.prose > :first-child {
+  margin-top: 0;
 }
 
 .prose h1 {
-  font-size: 2rem;
-  font-weight: 600;
-  letter-spacing: -0.025em;
+  font-size: 2.35rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
   margin-bottom: 1.5rem;
 }
 
 .prose h2 {
-  font-size: 1.3rem;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  margin-top: 2.75rem;
-  margin-bottom: 0.75rem;
-  padding-top: 0.25rem;
+  font-size: 1.45rem;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  margin-top: 3.25rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--c-line);
 }
 
 .prose h3 {
-  font-size: 1.05rem;
-  font-weight: 600;
-  margin-top: 2rem;
-  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  margin-top: 2.25rem;
+  margin-bottom: 0.6rem;
+}
+
+.prose h2,
+.prose h3 {
+  scroll-margin-top: 5rem;
 }
 
 .prose p {
-  margin-bottom: 1.1rem;
+  margin-bottom: 1.15rem;
 }
 
 .prose ul,
 .prose ol {
-  margin-bottom: 1.1rem;
-  padding-left: 1.3rem;
+  margin-bottom: 1.15rem;
+  padding-left: 1.4rem;
 }
 
 .prose ul {
@@ -87,11 +196,22 @@ html {
 }
 
 .prose li {
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.4rem;
+  padding-left: 0.2rem;
+}
+
+.prose li::marker {
+  color: var(--c-subtle);
+}
+
+.prose li > ul,
+.prose li > ol {
+  margin-top: 0.4rem;
+  margin-bottom: 0.4rem;
 }
 
 .prose strong {
-  font-weight: 600;
+  font-weight: 620;
 }
 
 .prose em {
@@ -99,60 +219,83 @@ html {
 }
 
 .prose a {
-  color: #2563eb;
+  color: var(--c-accent);
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--c-accent) 40%, transparent);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.15s;
 }
 
-@media (prefers-color-scheme: dark) {
-  .prose a {
-    color: #60a5fa;
-  }
+.prose a:hover {
+  text-decoration-color: var(--c-accent);
 }
 
+/* A blockquote reads as a callout: a note set apart from the running text. */
 .prose blockquote {
-  border-left: 3px solid var(--border);
-  padding-left: 1rem;
-  color: var(--muted);
-  margin-bottom: 1.1rem;
+  border: 1px solid var(--c-line);
+  border-left: 3px solid var(--c-accent);
+  border-radius: 0.5rem;
+  background: var(--c-surface);
+  padding: 0.85rem 1.1rem;
+  color: var(--c-muted);
+  margin-bottom: 1.25rem;
+}
+
+.prose blockquote > :last-child {
+  margin-bottom: 0;
 }
 
 .prose hr {
   border: 0;
-  border-top: 1px solid var(--border);
-  margin: 2.5rem 0;
+  border-top: 1px solid var(--c-line);
+  margin: 2.75rem 0;
 }
 
 /* Tables come from remark-gfm */
 .prose table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.9rem;
-  margin-bottom: 1.25rem;
+  line-height: 1.55;
+  margin-bottom: 1.4rem;
   display: block;
   overflow-x: auto;
+  border: 1px solid var(--c-line);
+  border-radius: 0.6rem;
 }
 
 .prose th,
 .prose td {
-  border: 1px solid var(--border);
-  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--c-line);
+  padding: 0.55rem 0.85rem;
   text-align: left;
+  vertical-align: top;
+}
+
+.prose tr:last-child td {
+  border-bottom: 0;
 }
 
 .prose th {
-  background: var(--surface);
-  font-weight: 600;
+  background: var(--c-surface);
+  font-weight: 620;
+  font-size: 0.8rem;
+  letter-spacing: 0.01em;
+  color: var(--c-muted);
+  white-space: nowrap;
 }
 
-/* Inline code — not code inside a highlighted block */
+/* Inline code - not code inside a highlighted block */
 .prose :not(pre) > code {
   font-family: var(--font-geist-mono), monospace;
-  font-size: 0.85em;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 0.25rem;
-  padding: 0.1rem 0.3rem;
+  font-size: 0.86em;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-line);
+  border-radius: 0.3rem;
+  padding: 0.08rem 0.32rem;
+  overflow-wrap: anywhere;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -162,50 +305,51 @@ html {
 /*
   rehype-pretty-code wraps every block in <figure data-rehype-pretty-code-figure>,
   and emits <figcaption data-rehype-pretty-code-title> when the fence carries a
-  title, e.g.  ```ts title="src/lib/api.ts"
+  title (a `title="src/lib/api.ts"` attribute after the language).
 */
 .prose figure[data-rehype-pretty-code-figure] {
-  margin-bottom: 1.25rem;
+  margin: 0 0 1.4rem;
 }
 
 .prose figcaption[data-rehype-pretty-code-title] {
   font-family: var(--font-geist-mono), monospace;
   font-size: 0.75rem;
-  color: var(--muted);
-  background: var(--surface);
-  border: 1px solid var(--border);
+  color: var(--c-muted);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-line);
   border-bottom: 0;
-  border-radius: 0.5rem 0.5rem 0 0;
-  padding: 0.4rem 0.85rem;
+  border-radius: 0.65rem 0.65rem 0 0;
+  padding: 0.45rem 0.9rem;
 }
 
 .prose figcaption[data-rehype-pretty-code-title] + div > pre {
-  border-radius: 0 0 0.5rem 0.5rem;
+  border-radius: 0 0 0.65rem 0.65rem;
 }
 
 .prose pre {
   font-family: var(--font-geist-mono), monospace;
-  font-size: 0.83rem;
-  line-height: 1.65;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  padding: 0.9rem 1rem;
+  font-size: 0.84rem;
+  line-height: 1.7;
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
+  border-radius: 0.65rem;
+  padding: 1rem 1.1rem;
   overflow-x: auto;
+  tab-size: 2;
 }
 
 .prose pre code {
   display: grid; /* one row per line, so line highlighting can span full width */
 }
 
-/* Lines marked for emphasis:  ```ts {2,5-7} */
+/* Lines marked for emphasis: a {2,5-7} range after the language */
 .prose pre code [data-highlighted-line] {
-  background: rgba(37, 99, 235, 0.09);
-  border-left: 2px solid #2563eb;
-  margin-left: -1rem;
-  margin-right: -1rem;
-  padding-left: calc(1rem - 2px);
-  padding-right: 1rem;
+  background: var(--c-accent-soft);
+  border-left: 2px solid var(--c-accent);
+  margin-left: -1.1rem;
+  margin-right: -1.1rem;
+  padding-left: calc(1.1rem - 2px);
+  padding-right: 1.1rem;
 }
 
 /*
@@ -219,8 +363,39 @@ code[data-theme*=" "] span {
 }
 
 @media (prefers-color-scheme: dark) {
-  code[data-theme*=" "],
-  code[data-theme*=" "] span {
+  :root:not([data-theme="light"]) code[data-theme*=" "],
+  :root:not([data-theme="light"]) code[data-theme*=" "] span {
     color: var(--shiki-dark);
   }
+}
+
+:root[data-theme="dark"] code[data-theme*=" "],
+:root[data-theme="dark"] code[data-theme*=" "] span {
+  color: var(--shiki-dark);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Theme toggle icons                                                         */
+/* -------------------------------------------------------------------------- */
+
+/* Light theme shows the moon (click to go dark); dark theme shows the sun. */
+.theme-icon-sun {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-icon-sun {
+    display: block;
+  }
+  :root:not([data-theme="light"]) .theme-icon-moon {
+    display: none;
+  }
+}
+
+:root[data-theme="dark"] .theme-icon-sun {
+  display: block;
+}
+
+:root[data-theme="dark"] .theme-icon-moon {
+  display: none;
 }

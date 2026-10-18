@@ -62,7 +62,7 @@ export function TableOfContents({ nodes }: TableOfContentsProps) {
 
   return (
     <nav aria-label="On this page" className="text-sm">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-neutral-500">
+      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
         On this page
       </p>
       <TocList nodes={nodes} activeId={activeId} />
@@ -82,21 +82,21 @@ function TocList({
   readonly activeId: string | null;
 }) {
   return (
-    <ul className="space-y-1.5">
+    <ul className="space-y-1">
       {nodes.map((node) => (
         <li key={node.id}>
           <a
             href={`#${node.id}`}
-            className={
+            className={`block border-l py-0.5 pl-3 leading-snug transition-colors ${
               node.id === activeId
-                ? "block text-blue-600 dark:text-blue-400"
-                : "block text-neutral-600 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white"
-            }
+                ? "-ml-px border-accent font-medium text-accent"
+                : "border-line text-muted hover:border-line-strong hover:text-fg"
+            }`}
           >
             {node.title}
           </a>
           {node.children.length > 0 && (
-            <div className="mt-1.5 pl-3">
+            <div className="mt-1 pl-3">
               <TocList nodes={node.children} activeId={activeId} />
             </div>
           )}

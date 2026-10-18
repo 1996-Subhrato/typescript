@@ -15,9 +15,11 @@ export function CapstoneNav() {
 
   return (
     <nav aria-label="Capstone steps">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">Capstone</h2>
-      <ol className="space-y-px border-l border-neutral-200 dark:border-neutral-800">
-        {capstonePages.map((page) => {
+      <h2 className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
+        Capstone
+      </h2>
+      <ol className="space-y-0.5">
+        {capstonePages.map((page, position) => {
           const href = capstoneHref(page.slug);
           const isActive = pathname === href;
           return (
@@ -25,13 +27,14 @@ export function CapstoneNav() {
               <Link
                 href={href}
                 aria-current={isActive ? "page" : undefined}
-                className={
-                  isActive
-                    ? "-ml-px block border-l border-blue-600 py-1 pl-3 text-sm font-medium text-blue-600 dark:border-blue-400 dark:text-blue-400"
-                    : "block border-l border-transparent py-1 pl-3 text-sm text-neutral-700 hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-white"
-                }
+                className={`flex items-baseline gap-2.5 rounded-md px-3 py-1.5 text-[13.5px] transition-colors ${
+                  isActive ? "bg-accent-soft font-medium text-accent" : "text-muted hover:bg-surface-2 hover:text-fg"
+                }`}
               >
-                {page.title}
+                <span className="w-4 shrink-0 text-right font-mono text-[11px] text-subtle">
+                  {position === 0 ? "" : position}
+                </span>
+                <span>{page.title.replace(/^Step \d+: /, "")}</span>
               </Link>
             </li>
           );

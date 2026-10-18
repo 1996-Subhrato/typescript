@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PrevNextNav } from "@/components/PrevNextNav";
 import { TableOfContents } from "@/components/TableOfContents";
-import { findTopic, getAdjacentTopics, publishedTopics } from "@/lib/docs";
+import { allLevels, findTopic, getAdjacentTopics, publishedTopics } from "@/lib/docs";
 import { getTableOfContents } from "@/lib/toc";
 
 /**
@@ -27,10 +27,18 @@ export default async function DocPage(props: PageProps<"/docs/[slug]">) {
 
   const { prev, next } = getAdjacentTopics(slug);
 
+  // "Topic 9 of 11": where this page sits inside its level.
+  const levelTopics = allLevels.find((level) => level.id === entry.levelId)?.topics ?? [];
+  const position = levelTopics.findIndex((topic) => topic.slug === slug) + 1;
+
   return (
     <div className="flex gap-12 py-10">
       <article className="min-w-0 max-w-3xl flex-1">
-        <p className="mb-2 text-sm text-neutral-500">{entry.levelTitle}</p>
+        <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium text-muted">
+          <span className="size-1.5 rounded-full bg-accent-solid" aria-hidden="true" />
+          {entry.levelTitle}
+          {position > 0 && <span className="text-subtle">· Topic {position} of {levelTopics.length}</span>}
+        </p>
         <div className="prose">
           <Content />
         </div>

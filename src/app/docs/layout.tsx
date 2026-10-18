@@ -10,7 +10,7 @@ import { Sidebar } from "@/components/Sidebar";
  */
 export default function DocsLayout({ children }: LayoutProps<"/docs">) {
   return (
-    <div className="mx-auto flex w-full max-w-[90rem] gap-10 px-6">
+    <div className="mx-auto flex w-full max-w-[90rem] gap-10 px-4 sm:px-6">
       <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-64 shrink-0 overflow-y-auto py-10 lg:block">
         <Sidebar />
       </aside>

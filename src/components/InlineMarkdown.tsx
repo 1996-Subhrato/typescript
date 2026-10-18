@@ -21,7 +21,7 @@ export function InlineMarkdown({ text }: { text: string }) {
     if (part.startsWith("`")) {
       const code = part.replace(/^`+\s?/, "").replace(/\s?`+$/, "");
       return (
-        <code key={index} className="rounded border border-neutral-200 bg-neutral-100 px-1 py-0.5 font-mono text-[0.85em] dark:border-neutral-800 dark:bg-neutral-900">
+        <code key={index} className="rounded border border-line bg-surface-2 px-1 py-0.5 font-mono text-[0.85em]">
           {code}
         </code>
       );
@@ -30,7 +30,7 @@ export function InlineMarkdown({ text }: { text: string }) {
     const link = LINK.exec(part);
     if (link?.[1] !== undefined && link[2] !== undefined) {
       return (
-        <Link key={index} href={link[2]} className="text-blue-600 underline underline-offset-2 dark:text-blue-400">
+        <Link key={index} href={link[2]} className="text-accent underline underline-offset-2">
           {stripEmphasis(link[1])}
         </Link>
       );

@@ -15,15 +15,15 @@ export function ExerciseItem({ id, children }: { id: string; children: ReactNode
   const done = completed.has(id);
 
   return (
-    <li className="flex gap-3 py-2">
+    <li className="flex gap-3 py-2.5">
       <input
         type="checkbox"
         checked={done}
         onChange={() => toggleCompleted(id)}
         aria-label="Mark this exercise as done"
-        className="mt-1.5 size-4 shrink-0 accent-blue-600"
+        className="mt-1 size-4 shrink-0 cursor-pointer accent-[var(--c-accent-solid)]"
       />
-      <div className={done ? "text-neutral-500 line-through decoration-neutral-300 dark:decoration-neutral-700" : ""}>
+      <div className={done ? "text-subtle line-through decoration-line-strong" : ""}>
         {children}
       </div>
     </li>
@@ -38,18 +38,25 @@ export function ExerciseProgress({ ids }: { ids: readonly string[] }) {
 
   return (
     <div className="mt-8">
-      <div className="flex items-baseline justify-between text-sm text-neutral-500">
+      <div className="flex items-baseline justify-between text-sm text-muted">
         <span>
           {done} of {ids.length} exercises done
         </span>
         {done > 0 && (
-          <button type="button" onClick={resetCompleted} className="underline underline-offset-2 hover:text-neutral-800 dark:hover:text-neutral-200">
+          <button type="button" onClick={resetCompleted} className="underline underline-offset-2 hover:text-fg">
             Reset
           </button>
         )}
       </div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
-        <div className="h-full rounded-full bg-blue-600 dark:bg-blue-400" style={{ width: `${percent}%` }} />
+      <div
+        className="mt-2 h-2 overflow-hidden rounded-full bg-surface-2"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={ids.length}
+        aria-valuenow={done}
+        aria-label="Exercises completed"
+      >
+        <div className="h-full rounded-full bg-accent-solid transition-[width] duration-300" style={{ width: `${percent}%` }} />
       </div>
     </div>
   );

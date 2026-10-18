@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 import { allLevels } from "@/lib/docs";
 
 /**
@@ -21,16 +22,23 @@ export interface SidebarProps {
 
 export function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
+  // `HTMLAnchorElement | null`: React cannot know the link is mounted, so the null check is real.
+  const activeRef = useRef<HTMLAnchorElement>(null);
+
+  // On a long list the current topic can be far below the fold; bring it into view.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: "nearest" });
+  }, [pathname]);
 
   return (
     <nav aria-label="Documentation">
       <ul className="space-y-7">
         {allLevels.map((level) => (
           <li key={level.id}>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">
+            <h2 className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
               {level.title}
             </h2>
-            <ul className="space-y-px border-l border-neutral-200 dark:border-neutral-800">
+            <ul className="space-y-0.5">
               {level.topics.map((topic) => {
                 const href = `/docs/${topic.slug}`;
                 const isActive = pathname === href;
@@ -39,7 +47,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
                   return (
                     <li key={topic.slug}>
                       <span
-                        className="block border-l border-transparent py-1 pl-3 text-sm text-neutral-400 dark:text-neutral-600"
+                        className="block rounded-md px-3 py-1.5 text-[13.5px] text-subtle opacity-60"
                         title="Not written yet"
                       >
                         {topic.title}
@@ -51,14 +59,15 @@ export function Sidebar({ onNavigate }: SidebarProps) {
                 return (
                   <li key={topic.slug}>
                     <Link
+                      ref={isActive ? activeRef : undefined}
                       href={href}
                       onClick={onNavigate}
                       aria-current={isActive ? "page" : undefined}
-                      className={
+                      className={`block rounded-md px-3 py-1.5 text-[13.5px] transition-colors ${
                         isActive
-                          ? "-ml-px block border-l border-blue-600 py-1 pl-3 text-sm font-medium text-blue-600 dark:border-blue-400 dark:text-blue-400"
-                          : "block border-l border-transparent py-1 pl-3 text-sm text-neutral-700 hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-white"
-                      }
+                          ? "bg-accent-soft font-medium text-accent"
+                          : "text-muted hover:bg-surface-2 hover:text-fg"
+                      }`}
                     >
                       {topic.title}
                     </Link>
